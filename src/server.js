@@ -1,54 +1,54 @@
-// server.js — HTTP Express na porta 9100
+// server.js — HTTP Express na porta 19100
 
 const express = require('express')
 const cors    = require('cors')
 const { ler, salvar } = require('./config')
-const { imprimir, testar, listarPortas } = require('./printer')
+const { imprimir, testar, listarPortas, verificarPorta } = require('./printer')
 const log = require('./logger')
 
-const PORTA_HTTP = 9100
+const PORTA_HTTP = 19100
 
-// ── CORS — permite localhost + origens configuradas ──────────────────────────
+// ── CORS + Private Network Access ────────────────────────────────────────────
+// O agente roda em http://127.0.0.1 (HTTP local), inacessível externamente.
+// Segurança = binding em localhost apenas. Sem autenticação por token.
+//
+// Problemas resolvidos aqui:
+// 1. Chrome bloqueia requisições de páginas HTTPS → HTTP 127.0.0.1 sem o header
+//    Access-Control-Allow-Private-Network: true (Chrome Private Network Access).
+// 2. Origens variadas (localhost, cheffya.com.br) precisam ser aceitas.
+//
+// Solução: aceitar TODAS as origens + responder o header de Private Network
+// Access nos preflights OPTIONS.
 function criarCors() {
-  const origens = [
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:3000',
-  ]
-  // Adiciona origens salvas na config (produção Vercel, etc.)
-  const cfg = ler()
-  if (cfg.origins && Array.isArray(cfg.origins)) {
-    cfg.origins.forEach(o => { if (!origens.includes(o)) origens.push(o) })
-  }
-
   return cors({
-    origin: (origin, cb) => {
-      // Requisições sem origin (ex: curl, Postman, mesma página) → permitir
-      if (!origin) return cb(null, true)
-      if (origens.some(o => origin.startsWith(o))) return cb(null, true)
-      log.warn(`CORS bloqueou origin: ${origin}`)
-      cb(new Error('Origem não permitida'))
-    },
+    origin: true,   // qualquer origem — segurança via binding em 127.0.0.1
     methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-Agent-Token'],
+    allowedHeaders: ['Content-Type', 'Access-Control-Request-Private-Network'],
+    exposedHeaders: ['Access-Control-Allow-Private-Network'],
+    credentials: false,
   })
 }
 
-// ── Middleware de autenticação ────────────────────────────────────────────────
-function auth(req, res, next) {
-  const cfg   = ler()
-  const token = req.headers['x-agent-token']
-  if (!token || token !== cfg.token) {
-    return res.status(401).json({ ok: false, erro: 'Token inválido' })
+// Middleware para Chrome Private Network Access:
+// Quando uma página HTTPS faz fetch para http://127.0.0.1, o Chrome envia um
+// preflight OPTIONS com "Access-Control-Request-Private-Network: true".
+// O servidor deve responder com "Access-Control-Allow-Private-Network: true".
+function privateNetworkAccess(req, res, next) {
+  if (req.headers['access-control-request-private-network']) {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true')
   }
   next()
 }
 
+// Autenticação removida — agente escuta só em 127.0.0.1 (localhost),
+// portanto inacessível de fora do PC. Segurança suficiente para uso local.
+
 // ── Criar app Express ─────────────────────────────────────────────────────────
 function criarServidor() {
   const app = express()
+  app.use(privateNetworkAccess)
   app.use(criarCors())
+  app.options('*', criarCors())   // responde preflights OPTIONS em todas as rotas
   app.use(express.json({ limit: '1mb' }))
 
   // ── GET /status — sem auth (detectar agente) ──────────────────────────────
@@ -59,28 +59,25 @@ function criarServidor() {
 
     if (cfg.porta) {
       try {
-        const { SerialPort } = require('serialport')
-        const p = new SerialPort({ path: cfg.porta, baudRate: 9600, autoOpen: false })
-        await new Promise((resolve, reject) => {
-          p.open(err => { p.close(() => {}); err ? reject(err) : resolve() })
-        })
-        conectada = true
+        conectada = await verificarPorta(cfg.porta)
+        if (!conectada) erro = `Porta ${cfg.porta} não acessível`
       } catch (e) {
         erro = e.message
       }
     }
 
     res.json({
-      ok:       true,
-      versao:   cfg.versao,
-      porta:    cfg.porta || null,
+      ok:           true,
+      versao:       cfg.versao,
+      porta:        cfg.porta || null,
+      larguraPapel: cfg.larguraPapel || 58,
       conectada,
       erro,
     })
   })
 
   // ── GET /portas — lista portas COM ────────────────────────────────────────
-  app.get('/portas', auth, async (req, res) => {
+  app.get('/portas', async (req, res) => {
     try {
       const portas = await listarPortas()
       res.json({ ok: true, portas })
@@ -89,23 +86,24 @@ function criarServidor() {
     }
   })
 
-  // ── POST /configurar — salva porta COM (e opcionalmente origins) ──────────
-  app.post('/configurar', auth, (req, res) => {
+  // ── POST /configurar — salva porta COM, larguraPapel e opcionalmente origins ─
+  app.post('/configurar', (req, res) => {
     try {
-      const { porta, origins } = req.body
+      const { porta, origins, larguraPapel } = req.body
       const updates = {}
-      if (porta)   updates.porta   = porta
-      if (origins) updates.origins = origins
+      if (porta)        updates.porta        = porta
+      if (origins)      updates.origins      = origins
+      if (larguraPapel) updates.larguraPapel = Number(larguraPapel)
       const cfg = salvar(updates)
-      log.info(`Configurado: porta=${cfg.porta}`)
-      res.json({ ok: true, config: { porta: cfg.porta } })
+      log.info(`Configurado: porta=${cfg.porta} papel=${cfg.larguraPapel}mm`)
+      res.json({ ok: true, config: { porta: cfg.porta, larguraPapel: cfg.larguraPapel } })
     } catch (e) {
       res.status(500).json({ ok: false, erro: e.message })
     }
   })
 
   // ── POST /imprimir ────────────────────────────────────────────────────────
-  app.post('/imprimir', auth, async (req, res) => {
+  app.post('/imprimir', async (req, res) => {
     const { pedido, nomeLoja } = req.body
     if (!pedido) return res.status(400).json({ ok: false, erro: 'pedido é obrigatório' })
 
@@ -113,7 +111,7 @@ function criarServidor() {
     if (!cfg.porta) return res.status(400).json({ ok: false, erro: 'Nenhuma porta COM configurada. Configure em Alterar porta COM.' })
 
     try {
-      await imprimir(pedido, nomeLoja || '', cfg.porta)
+      await imprimir(pedido, nomeLoja || '', cfg.porta, cfg.larguraPapel || 58)
       res.json({ ok: true })
     } catch (e) {
       log.error(`Erro ao imprimir: ${e.message}`)
@@ -122,7 +120,7 @@ function criarServidor() {
   })
 
   // ── POST /testar ──────────────────────────────────────────────────────────
-  app.post('/testar', auth, async (req, res) => {
+  app.post('/testar', async (req, res) => {
     const cfg = ler()
     if (!cfg.porta) return res.status(400).json({ ok: false, erro: 'Nenhuma porta COM configurada.' })
 

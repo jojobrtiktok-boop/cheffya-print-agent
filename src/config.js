@@ -13,10 +13,11 @@ function versaoAtual() {
 }
 
 const DEFAULTS = {
-  porta:   '',
-  token:   crypto.randomBytes(20).toString('hex'),
-  origins: ['http://localhost:5173', 'http://localhost:3000'],
-  versao:  versaoAtual(),
+  porta:        '',
+  larguraPapel: 58,   // mm — 58 (32 colunas) ou 80 (42 colunas)
+  token:        crypto.randomBytes(20).toString('hex'),
+  origins:      ['http://localhost:5173', 'http://localhost:3000'],
+  versao:       versaoAtual(),
 }
 
 function garantirDir() {

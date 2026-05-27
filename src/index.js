@@ -10,7 +10,7 @@ const { verificarAtualizacao } = require('./updater')
 process.on('uncaughtException', (err) => {
   log.error(`Erro não tratado: ${err.message}`)
   if (err.code === 'EADDRINUSE') {
-    log.error('Porta 9100 em uso — outro agente já está rodando. Encerrando.')
+    log.error('Porta 19100 em uso — outro agente já está rodando. Encerrando.')
     process.exit(1)
   }
 })

@@ -9,182 +9,219 @@ const { listarPortas } = require('./printer')
 const { verificarAtualizacao } = require('./updater')
 const log  = require('./logger')
 
-// Ícone base64 (PNG 32x32 — ícone de impressora simples)
-// Para substituir: converta um .ico para base64 e cole aqui
-const ICON_BASE64 = `iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABHNCSVQICAgI
-fAhkiAAAAAlwSFlzAAAA7AAAAOwBeShxvQAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9y
-Z5vuPBoAAAHISURBVFiF7ZYxaxsxFMc/kq4Q7OAhQ6EUCqFDKYVCKZRCKYRCKZRCKZRCcQ7ZgiBQ
-IAMhkCEDAQIZMhBCCIRACIRACIRACGQIgRAIgRAIgRAIgRAIgRAIgRAIgRAIgRAI/z8k6f3Tneq2
-nq3rCv0ghIe/7773ve8JIYS4E0IIIYQQ4k4IIYQQQggh7oQQQgghhBB3QgghhBBCiDshhBBCCCHE
-nRBCCCGEEOJOCCGEEEIIcSeEEEIIIYS4E0IIIYQQ4k4IIYQQQghxJ4QQQgghhLgTQgghhBBC3Akh
-hBBCCCHuhBBCCCGEEHdCCCGEEEKIOyGEEEIIIcSdEEIIIYQQ4k4IIYQQQghxJ4QQQgghhLgTQggh
-hBBC3AkhhBBCCCHuhBBCCCGEEHdCCCGEEEKIOyGEEEIIIcSdEEIIIYQQ4k4IIYQQQghxJ4QQQggh
-hLgTQgghhBBC3AkhhBBCCCHuhBBCCCGEEHdCCCGEEEKIOyGEEEIIIcSdEEIIIYQQ4k4IIYQQ4k4I
-IYQQQghxJ4QQQgghhLgTQgghhBBC3AkhhBBCCCHuhBBCCCGEEHdCCCGEEEKIOyGEEEIIIcSdEEII
-IYQQd0IIIYQQQtx9AK7rHJFJAAAAAElFTkSuQmCC`
+// ── Extrai o binary do systray2 para o disco (necessário no pkg) ─────────────
+function extrairTrayBinary() {
+  const { CONFIG_DIR } = require('./config')
+  const trayBinDir = path.join(CONFIG_DIR, 'traybin')
+  const binName    = 'tray_windows_release.exe'
+  const dstPath    = path.join(trayBinDir, binName)
 
-// Caminho do ícone (extrai para temp se rodando como pkg)
-function getIconPath() {
-  const iconName = 'cheffya-tray-icon.png'
-  const tempIcon = path.join(os.tmpdir(), iconName)
+  if (!fs.existsSync(trayBinDir)) fs.mkdirSync(trayBinDir, { recursive: true })
 
-  // Tenta usar ícone da pasta assets (dentro do snapshot pkg ou ao lado do exe)
-  const candidates = [
-    path.join(__dirname, '..', 'assets', 'icon.png'),         // dev (node direto)
-    path.join(path.dirname(process.execPath), 'assets', 'icon.png'), // pkg (pasta do exe)
-  ]
-
-  for (const src of candidates) {
-    if (fs.existsSync(src)) {
-      try { fs.copyFileSync(src, tempIcon) } catch {}
-      return tempIcon
-    }
-  }
-
-  // Fallback: usa base64 embutido
-  if (!fs.existsSync(tempIcon)) {
+  if (!fs.existsSync(dstPath)) {
+    const srcPath = path.join(__dirname, '..', 'node_modules', 'systray2', 'traybin', binName)
     try {
-      const buf = Buffer.from(ICON_BASE64.replace(/\s/g, ''), 'base64')
-      fs.writeFileSync(tempIcon, buf)
-    } catch {}
-  }
-  return tempIcon
-}
-
-// Extrai helper systray2 para temp (necessário para pkg)
-function getHelperPath() {
-  if (!process.pkg) return null // usa path padrão do módulo
-
-  const helperName = 'trayhelper-win.exe'
-  const tempHelper = path.join(os.tmpdir(), `cheffya-${helperName}`)
-
-  if (!fs.existsSync(tempHelper)) {
-    const snapshotPath = path.join(__dirname, '..', 'node_modules', 'systray2', 'traybin', helperName)
-    try {
-      fs.copyFileSync(snapshotPath, tempHelper)
+      const data = fs.readFileSync(srcPath)
+      fs.writeFileSync(dstPath, data)
+      log.info(`Tray binary extraído para ${dstPath}`)
     } catch (e) {
-      log.warn(`Não foi possível extrair tray helper: ${e.message}`)
+      log.warn(`Falha ao extrair tray binary: ${e.message}`)
       return null
     }
   }
-  return tempHelper
+  return trayBinDir
 }
 
+// ── Extrai ícone para o disco e retorna o caminho real ────────────────────────
+// systray2's resolveIcon usa fs.pathExists — só converte p/ base64 se o arquivo
+// existir em disco real. No pkg, snapshot não passa nessa verificação.
+function extrairIcone() {
+  const { CONFIG_DIR } = require('./config')
+
+  const candidates = [
+    { src: path.join(__dirname, '..', 'assets', 'icon.ico'), dst: path.join(CONFIG_DIR, 'tray-icon.ico') },
+    { src: path.join(__dirname, '..', 'assets', 'tray.png'), dst: path.join(CONFIG_DIR, 'tray-icon.png') },
+    { src: path.join(__dirname, '..', 'assets', 'icon.png'), dst: path.join(CONFIG_DIR, 'tray-icon.png') },
+    process.pkg
+      ? { src: path.join(path.dirname(process.execPath), 'assets', 'icon.ico'), dst: path.join(CONFIG_DIR, 'tray-icon.ico') }
+      : null,
+  ].filter(Boolean)
+
+  for (const { src, dst } of candidates) {
+    try {
+      const data = fs.readFileSync(src)
+      if (data && data.length > 50) {
+        fs.writeFileSync(dst, data)
+        log.info(`Ícone extraído: ${dst} (${data.length} bytes)`)
+        return dst
+      }
+    } catch {}
+  }
+
+  log.warn('Ícone não encontrado — bandeja sem imagem')
+  return ''
+}
+
+// ── Inicializar bandeja ───────────────────────────────────────────────────────
 async function iniciarTray(onQuit) {
+  if (process.pkg) {
+    const trayBinDir = extrairTrayBinary()
+    if (trayBinDir) {
+      try {
+        const { CONFIG_DIR } = require('./config')
+        process.chdir(CONFIG_DIR)
+        log.info(`CWD alterado para ${CONFIG_DIR} (para systray2 encontrar traybin)`)
+      } catch (e) {
+        log.warn(`chdir falhou: ${e.message}`)
+      }
+    }
+  }
+
   let Systray
   try {
     Systray = require('systray2').default
   } catch (e) {
-    log.warn(`Tray não disponível: ${e.message} — agente continua sem ícone na bandeja.`)
+    log.warn(`systray2 não carregou: ${e.message} — agente continua sem ícone na bandeja.`)
     return null
   }
 
-  // Menu inicial (será recriado com portas dinâmicas)
-  const cfg   = ler()
+  const cfg    = ler()
   const portas = await listarPortas().catch(() => [])
+  const papel  = cfg.larguraPapel || 58
 
+  // ── Sub-menu: dispositivos ─────────────────────────────────────────────────
   const itensPorta = portas.length > 0
     ? portas.map(p => ({
-        title:   `${p.path}${p.descricao ? ' — ' + p.descricao : ''}${p.path === cfg.porta ? ' ✓' : ''}`,
-        tooltip: p.path,
+        title:   `${p.path}${p.path === cfg.porta ? ' ✓' : ''}`,
+        tooltip: p.descricao || p.path,
         checked: p.path === cfg.porta,
         enabled: true,
       }))
-    : [{ title: 'Nenhuma porta encontrada', tooltip: '', checked: false, enabled: false }]
+    : [{ title: 'Nenhum dispositivo encontrado', tooltip: '', checked: false, enabled: false }]
+
+  // ── Sub-menu: largura de papel ─────────────────────────────────────────────
+  const itensPapel = [
+    { title: `58mm${papel === 58 ? ' ✓' : ''}`, tooltip: '32 colunas — papel 58mm', checked: papel === 58, enabled: true },
+    { title: `80mm${papel === 80 ? ' ✓' : ''}`, tooltip: '42 colunas — papel 80mm', checked: papel === 80, enabled: true },
+  ]
+
+  const iconePath = extrairIcone()
 
   const menu = {
-    icon:    getIconPath(),
+    icon:    iconePath,
     title:   '',
     tooltip: `Cheffya Print Agent v${cfg.versao}`,
     items: [
-      {
-        title:   cfg.porta ? `● Porta: ${cfg.porta}` : '○ Porta não configurada',
-        tooltip: 'Status da impressora',
-        checked: false,
-        enabled: false,
-      },
+      { title: cfg.porta ? `● ${cfg.porta}` : '○ Impressora não configurada', tooltip: '', checked: false, enabled: false },
       Systray.separator,
-      {
-        title:   'Alterar porta COM',
-        tooltip: 'Selecionar porta da impressora',
-        checked: false,
-        enabled: true,
-        items:   itensPorta,
-      },
+      { title: 'Alterar impressora',    tooltip: '', checked: false, enabled: true, items: itensPorta  },
+      { title: `Papel: ${papel}mm`,     tooltip: '', checked: false, enabled: true, items: itensPapel  },
       Systray.separator,
-      { title: 'Testar impressão',     tooltip: '', checked: false, enabled: true },
-      { title: 'Verificar atualização',tooltip: '', checked: false, enabled: true },
+      { title: 'Testar impressão',      tooltip: '', checked: false, enabled: true },
+      { title: 'Verificar atualização', tooltip: '', checked: false, enabled: true },
       Systray.separator,
-      {
-        title:   `v${cfg.versao}`,
-        tooltip: 'Versão atual',
-        checked: false,
-        enabled: false,
-      },
+      { title: `v${cfg.versao}`,        tooltip: 'Versão atual', checked: false, enabled: false },
       Systray.separator,
-      { title: 'Sair', tooltip: 'Encerrar o agente', checked: false, enabled: true },
+      { title: 'Sair',                  tooltip: 'Encerrar o agente', checked: false, enabled: true },
     ],
   }
 
-  const helperPath = getHelperPath()
-  const tray = new Systray({ menu, debug: false, copyDir: !helperPath, ...(helperPath ? { trayPath: helperPath } : {}) })
+  let tray
+  try {
+    tray = new Systray({ menu, debug: false, copyDir: false })
+  } catch (e) {
+    log.warn(`Falha ao criar tray: ${e.message}`)
+    return null
+  }
 
+  // ── onClick — usa o TÍTULO do item em vez de seq_id numérico ──────────────
+  // Muito mais robusto: adicionar/remover itens não quebra os handlers.
   tray.onClick(action => {
-    const { seq_id } = action
+    const titulo = (action.item?.title || '').trim()
+    log.info(`[CLICK] "${titulo}"`)
 
-    // Índices do menu (0=status, 1=sep, 2=portas, 3=sep, 4=testar, 5=update, 6=sep, 7=versao, 8=sep, 9=sair)
-    // Clique no submenu de portas: seq_id tipo "2.0", "2.1" etc.
-    if (String(seq_id).startsWith('2.')) {
-      const idx = parseInt(String(seq_id).split('.')[1])
-      if (portas[idx]) {
-        const novaCom = portas[idx].path
-        salvar({ porta: novaCom })
-        log.info(`Porta alterada para ${novaCom}`)
-      }
+    // ── Seleção de dispositivo ─────────────────────────────────────────────
+    const porta = portas.find(p => titulo.startsWith(p.path))
+    if (porta) {
+      salvar({ porta: porta.path })
+      log.info(`Dispositivo selecionado: ${porta.path}`)
       return
     }
 
-    if (seq_id === 4) { // Testar impressão
+    // ── Seleção de largura de papel ────────────────────────────────────────
+    if (titulo.startsWith('58mm')) {
+      salvar({ larguraPapel: 58 })
+      log.info('Papel configurado: 58mm (32 colunas)')
+      return
+    }
+    if (titulo.startsWith('80mm')) {
+      salvar({ larguraPapel: 80 })
+      log.info('Papel configurado: 80mm (42 colunas)')
+      return
+    }
+
+    // ── Testar impressão ───────────────────────────────────────────────────
+    if (titulo === 'Testar impressão') {
       const { testar } = require('./printer')
       const c = ler()
-      if (!c.porta) return log.warn('Porta não configurada para teste')
-      testar(c.porta)
-        .then(() => log.info('Teste de impressão enviado'))
+      if (!c.porta) {
+        log.warn('Selecione uma impressora primeiro (Alterar impressora).')
+        return
+      }
+      log.info(`Disparando teste de impressão em "${c.porta}" (${c.larguraPapel || 58}mm)...`)
+      testar(c.porta, c.larguraPapel || 58)
+        .then(() => log.info('Teste enviado com sucesso'))
         .catch(e => log.error(`Teste falhou: ${e.message}`))
+      return
     }
 
-    if (seq_id === 5) { // Verificar atualização
-      verificarAtualizacao().catch(e => log.error(`Update: ${e.message}`))
+    // ── Verificar atualização ──────────────────────────────────────────────
+    if (titulo === 'Verificar atualização') {
+      verificarAtualizacao().catch(e => log.error(`Update check: ${e.message}`))
+      return
     }
 
-    if (seq_id === 9) { // Sair
+    // ── Sair ───────────────────────────────────────────────────────────────
+    if (titulo === 'Sair') {
       log.info('Encerrando por solicitação do usuário')
       removerAutoStart()
-      tray.kill()
-      setTimeout(() => process.exit(0), 300)
       if (onQuit) onQuit()
+      tray.kill(false)
+      setTimeout(() => {
+        log.info('Saindo (process.exit)')
+        process.exit(0)
+      }, 400)
+      return
     }
+
+    // Itens desabilitados (status, versão) ou pais de submenu não geram ação
   })
 
   log.info('Ícone da bandeja inicializado')
   return tray
 }
 
-// ── Auto-start (atalho na pasta Startup do Windows) ──────────────────────────
-function getStartupPath() {
-  return path.join(os.homedir(), 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'CheffyaPrintAgent.lnk')
+// ── Auto-start (Startup folder do Windows) ───────────────────────────────────
+function getStartupLnkPath() {
+  return path.join(
+    os.homedir(), 'AppData', 'Roaming', 'Microsoft', 'Windows',
+    'Start Menu', 'Programs', 'Startup', 'CheffyaPrintAgent.lnk'
+  )
 }
 
 function configurarAutoStart() {
-  if (!process.pkg) return // só faz sentido no .exe
+  if (!process.pkg) return
   try {
     const { execSync } = require('child_process')
-    const lnkPath = getStartupPath()
-    const exePath = process.execPath
+    const lnkPath = getStartupLnkPath()
+    if (fs.existsSync(lnkPath)) return
 
-    // Cria atalho .lnk via PowerShell
-    const ps = `$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('${lnkPath}'); $s.TargetPath = '${exePath}'; $s.Save()`
-    execSync(`powershell -Command "${ps}"`, { stdio: 'ignore' })
+    const exeDir  = path.dirname(process.execPath)
+    const vbsPath = path.join(exeDir, 'cheffya-print-agent-launcher.vbs')
+    const target  = fs.existsSync(vbsPath) ? vbsPath : process.execPath
+
+    const ps = `$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('${lnkPath}'); $s.TargetPath = '${target}'; $s.Save()`
+    execSync(`powershell -WindowStyle Hidden -Command "${ps}"`, { stdio: 'ignore' })
     log.info('Auto-start configurado')
   } catch (e) {
     log.warn(`Auto-start não configurado: ${e.message}`)
@@ -193,11 +230,8 @@ function configurarAutoStart() {
 
 function removerAutoStart() {
   try {
-    const lnkPath = getStartupPath()
-    if (fs.existsSync(lnkPath)) {
-      fs.unlinkSync(lnkPath)
-      log.info('Atalho de auto-start removido')
-    }
+    const lnkPath = getStartupLnkPath()
+    if (fs.existsSync(lnkPath)) { fs.unlinkSync(lnkPath); log.info('Auto-start removido') }
   } catch {}
 }
 

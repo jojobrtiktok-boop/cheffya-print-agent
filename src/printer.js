@@ -1,17 +1,24 @@
-// printer.js — ESC/POS + serialport
-// Portado de src/utils/impressora.js da app web (Menu Control)
+// printer.js — ESC/POS + acesso à porta COM via PowerShell/.NET
+// (sem dependências nativas — funciona dentro do pkg .exe)
 
-const { SerialPort } = require('serialport')
-const log = require('./logger')
+const path    = require('path')
+const fs      = require('fs')
+const os      = require('os')
+const { execFile } = require('child_process')
+const log     = require('./logger')
 
 // ── ESC/POS constantes ────────────────────────────────────────────────────────
 const ESC = 0x1B
 const GS  = 0x1D
 const LF  = 0x0A
 
-const COLS_N = 32
-const COLS_H = 32
-const COLS_D = 16
+// Colunas por largura de papel:
+//   58mm → ~32 chars por linha (font padrão ESC/POS ~1.8mm por char)
+//   80mm → ~42 chars por linha (font padrão ESC/POS ~1.7mm por char)
+function getCols(larguraMm) {
+  if (larguraMm === 80) return { N: 42, H: 42, D: 21 }
+  return { N: 32, H: 32, D: 16 }   // padrão 58mm
+}
 
 const SIZE_NORMAL = [GS, 0x21, 0x00]
 const SIZE_HIGH   = [GS, 0x21, 0x01]
@@ -64,8 +71,9 @@ function separador(c = '-', cols = COLS_N) {
 }
 
 // ── Montar bytes ESC/POS ──────────────────────────────────────────────────────
-function montarEscPos(pedido, nomeLoja = '') {
+function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   const b = []
+  const { N: COLS_N, H: COLS_H, D: COLS_D } = getCols(larguraPapel)
 
   const clienteNome     = pedido.cliente_nome     || pedido.clienteNome
   const clienteTelefone = pedido.cliente_telefone || pedido.clienteTelefone
@@ -190,48 +198,185 @@ function montarEscPos(pedido, nomeLoja = '') {
   return Buffer.from(b)
 }
 
-// ── Listar portas COM disponíveis ─────────────────────────────────────────────
-async function listarPortas() {
-  const portas = await SerialPort.list()
-  return portas
-    .filter(p => p.path.startsWith('COM') || p.path.startsWith('/dev/'))
-    .map(p => ({ path: p.path, descricao: p.manufacturer || p.friendlyName || '' }))
+// ── Executar PowerShell ───────────────────────────────────────────────────────
+function runPS(script, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { timeout: timeoutMs },
+      (err, stdout, stderr) => {
+        if (stderr && stderr.trim()) log.warn(`[PS stderr] ${stderr.trim().slice(0, 300)}`)
+        if (err) return reject(new Error((stderr || err.message || 'Erro PowerShell').trim()))
+        resolve(stdout.trim())
+      }
+    )
+  })
 }
 
-// ── Imprimir (open → write → drain → close por job) ──────────────────────────
-async function imprimir(pedido, nomeLoja, portaCOM) {
-  if (!portaCOM) throw new Error('Nenhuma porta COM configurada. Configure em Alterar porta COM.')
+// ── Detectar tipo de dispositivo ─────────────────────────────────────────────
+function ehPortaCOM(dispositivo) {
+  return /^COM\d+$/i.test(dispositivo)
+}
 
-  const dados = montarEscPos(pedido, nomeLoja)
+// ── Enviar buffer via porta COM (serial/USB-serial/Bluetooth) ─────────────────
+async function escrevePortaCOM(portaCOM, buffer) {
+  const tempFile = path.join(os.tmpdir(), `cheffya-print-${Date.now()}.bin`)
+  fs.writeFileSync(tempFile, buffer)
 
-  await new Promise((resolve, reject) => {
-    const porta = new SerialPort({ path: portaCOM, baudRate: 9600, autoOpen: false })
+  const portaPS = portaCOM.replace(/'/g, "''")
+  const filePS  = tempFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
 
-    porta.open(err => {
-      if (err) return reject(new Error(`Erro ao abrir ${portaCOM}: ${err.message}`))
+  const script = `
+$bytes = [System.IO.File]::ReadAllBytes('${filePS}')
+$port  = New-Object System.IO.Ports.SerialPort('${portaPS}', 9600, 'None', 8, 'One')
+$port.WriteTimeout = 5000
+try {
+  $port.Open()
+  $port.Write($bytes, 0, $bytes.Length)
+  $port.Flush()
+} finally {
+  if ($port.IsOpen) { $port.Close() }
+}
+Remove-Item -Path '${filePS}' -ErrorAction SilentlyContinue
+`
+  try {
+    await runPS(script)
+  } catch (e) {
+    try { fs.unlinkSync(tempFile) } catch {}
+    throw e
+  }
+}
 
-      porta.write(dados, err2 => {
-        if (err2) {
-          porta.close(() => {})
-          return reject(new Error(`Erro ao escrever em ${portaCOM}: ${err2.message}`))
-        }
+// ── Enviar buffer via impressora Windows (USB direto, sem porta COM) ──────────
+// Usa a API winspool.drv (RAW) — bypassa driver de formatação, envia ESC/POS direto
+async function escreveImpressoraWindows(nomeImpressora, buffer) {
+  const tempFile = path.join(os.tmpdir(), `cheffya-print-${Date.now()}.bin`)
+  fs.writeFileSync(tempFile, buffer)
 
-        porta.drain(err3 => {
-          porta.close(() => {})
-          if (err3) return reject(new Error(`Erro no drain ${portaCOM}: ${err3.message}`))
-          resolve()
-        })
-      })
-    })
+  const nomePS = nomeImpressora.replace(/'/g, "''")
+  const filePS = tempFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
 
-    porta.on('error', err => reject(new Error(`Porta ${portaCOM}: ${err.message}`)))
-  })
+  // Usa winspool.drv via Add-Type para enviar bytes RAW (ESC/POS) sem driver de formatação
+  const script = `
+$ErrorActionPreference = 'Stop'
+# Só define a classe se ainda não existir (evita erro "type already exists")
+if (-not ([System.Management.Automation.PSTypeName]'RawPrint').Type) {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class RawPrint {
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)] public struct DOCINFO {
+    [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+  }
+  [DllImport("winspool.Drv", EntryPoint="OpenPrinterA")] public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+  [DllImport("winspool.Drv", EntryPoint="ClosePrinter")] public static extern bool ClosePrinter(IntPtr h);
+  [DllImport("winspool.Drv", EntryPoint="StartDocPrinterA")] public static extern int StartDocPrinter(IntPtr h, int lv, ref DOCINFO di);
+  [DllImport("winspool.Drv", EntryPoint="EndDocPrinter")] public static extern bool EndDocPrinter(IntPtr h);
+  [DllImport("winspool.Drv", EntryPoint="StartPagePrinter")] public static extern bool StartPagePrinter(IntPtr h);
+  [DllImport("winspool.Drv", EntryPoint="EndPagePrinter")] public static extern bool EndPagePrinter(IntPtr h);
+  [DllImport("winspool.Drv", EntryPoint="WritePrinter")] public static extern bool WritePrinter(IntPtr h, byte[] b, int n, out int w);
+}
+"@
+}
+$h = [IntPtr]::Zero
+if (-not [RawPrint]::OpenPrinter('${nomePS}', [ref]$h, [IntPtr]::Zero)) { throw "Falha ao abrir impressora: ${nomePS}" }
+try {
+  $di = New-Object RawPrint+DOCINFO
+  $di.pDocName  = 'Cheffya'
+  $di.pDataType = 'RAW'
+  $dh = [RawPrint]::StartDocPrinter($h, 1, [ref]$di)
+  if ($dh -le 0) { throw "StartDocPrinter falhou (retornou $dh)" }
+  [RawPrint]::StartPagePrinter($h) | Out-Null
+  $bytes = [System.IO.File]::ReadAllBytes('${filePS}')
+  $w = 0
+  if (-not [RawPrint]::WritePrinter($h, $bytes, $bytes.Length, [ref]$w)) { throw 'WritePrinter falhou' }
+  [RawPrint]::EndPagePrinter($h) | Out-Null
+  [RawPrint]::EndDocPrinter($h) | Out-Null
+  Write-Host "OK:$w"
+} finally {
+  [RawPrint]::ClosePrinter($h) | Out-Null
+  Remove-Item -Path '${filePS}' -ErrorAction SilentlyContinue
+}
+`
+  try {
+    await runPS(script, 15000)
+  } catch (e) {
+    try { fs.unlinkSync(tempFile) } catch {}
+    throw e
+  }
+}
 
-  log.info(`Imprimiu pedido #${pedido.id || pedido.ifood_short_id || '?'} em ${portaCOM}`)
+// ── Listar dispositivos de impressão (COM + impressoras Windows USB) ──────────
+async function listarPortas() {
+  const resultados = []
+
+  // 1. Portas COM (serial, USB-serial virtual, Bluetooth SPP)
+  try {
+    const out = await runPS('[System.IO.Ports.SerialPort]::GetPortNames() | Sort-Object', 5000)
+    if (out) {
+      out.split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(s => /^COM\d+$/i.test(s))
+        .forEach(p => resultados.push({ path: p.toUpperCase(), descricao: 'Porta serial / USB-serial / Bluetooth' }))
+    }
+  } catch {}
+
+  // 2. Impressoras Windows instaladas (USB direto, rede, etc.) — exclui PDF/Fax/XPS
+  try {
+    const out = await runPS(
+      `Get-Printer | Where-Object { $_.Name -notmatch 'PDF|XPS|Fax|OneNote|Microsoft' } | Select-Object -ExpandProperty Name`,
+      5000
+    )
+    if (out) {
+      out.split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .forEach(nome => resultados.push({ path: nome, descricao: 'Impressora USB / Rede (Windows)' }))
+    }
+  } catch {}
+
+  return resultados
+}
+
+// ── Verificar se dispositivo está acessível ───────────────────────────────────
+async function verificarPorta(dispositivo) {
+  if (ehPortaCOM(dispositivo)) {
+    const portaPS = dispositivo.replace(/'/g, "''")
+    try {
+      const out = await runPS(`
+try { $p = New-Object System.IO.Ports.SerialPort('${portaPS}',9600); $p.Open(); $p.Close(); Write-Host 'OK' }
+catch { Write-Host "ERRO:$($_.Exception.Message)" }
+`, 5000)
+      return out.startsWith('OK')
+    } catch { return false }
+  } else {
+    // Impressora Windows: verifica se está na lista
+    try {
+      const nomePS = dispositivo.replace(/'/g, "''")
+      const out = await runPS(`(Get-Printer -Name '${nomePS}' -ErrorAction SilentlyContinue) -ne $null`, 3000)
+      return out.trim() === 'True'
+    } catch { return false }
+  }
+}
+
+// ── Imprimir pedido ───────────────────────────────────────────────────────────
+async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58) {
+  if (!dispositivo) throw new Error('Nenhum dispositivo configurado. Configure em Alterar porta / impressora.')
+  const dados = montarEscPos(pedido, nomeLoja, larguraPapel)
+  log.info(`Imprimindo ${dados.length} bytes em "${dispositivo}" (papel ${larguraPapel}mm)`)
+  if (ehPortaCOM(dispositivo)) {
+    await escrevePortaCOM(dispositivo, dados)
+  } else {
+    await escreveImpressoraWindows(dispositivo, dados)
+  }
+  log.info(`Impressão concluída`)
 }
 
 // ── Testar impressora ─────────────────────────────────────────────────────────
-async function testar(portaCOM) {
+async function testar(dispositivo, larguraPapel = 58) {
   const pedidoTeste = {
     id: 'TESTE01',
     canal: 'balcao',
@@ -239,12 +384,12 @@ async function testar(portaCOM) {
     hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
     itens: [
       { nome: 'X-Burguer Especial', quantidade: 2, precoUnit: 25.90, opcoes: [{ nome: 'Sem cebola' }] },
-      { nome: 'Coca-Cola 2L',        quantidade: 1, precoUnit: 15.00, opcoes: [] },
+      { nome: 'Coca-Cola 2L',       quantidade: 1, precoUnit: 15.00, opcoes: [] },
     ],
     forma_pagamento: 'pix',
-    obs: 'Pedido de teste do agente',
+    obs: `Teste ${larguraPapel}mm — ${larguraPapel === 80 ? 42 : 32} colunas`,
   }
-  await imprimir(pedidoTeste, 'CHEFFYA', portaCOM)
+  await imprimir(pedidoTeste, 'CHEFFYA', dispositivo, larguraPapel)
 }
 
-module.exports = { imprimir, testar, listarPortas, montarEscPos }
+module.exports = { imprimir, testar, listarPortas, verificarPorta, montarEscPos }
