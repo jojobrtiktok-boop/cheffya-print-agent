@@ -28,15 +28,20 @@ function getIconPath() {
   const iconName = 'cheffya-tray-icon.png'
   const tempIcon = path.join(os.tmpdir(), iconName)
 
-  // Tenta usar ícone da pasta assets primeiro
-  const assetsIcon = path.join(__dirname, '..', 'assets', 'icon.png')
-  if (fs.existsSync(assetsIcon)) {
-    // Copia para temp para garantir acesso mesmo em pkg
-    try { fs.copyFileSync(assetsIcon, tempIcon) } catch {}
-    return tempIcon
+  // Tenta usar ícone da pasta assets (dentro do snapshot pkg ou ao lado do exe)
+  const candidates = [
+    path.join(__dirname, '..', 'assets', 'icon.png'),         // dev (node direto)
+    path.join(path.dirname(process.execPath), 'assets', 'icon.png'), // pkg (pasta do exe)
+  ]
+
+  for (const src of candidates) {
+    if (fs.existsSync(src)) {
+      try { fs.copyFileSync(src, tempIcon) } catch {}
+      return tempIcon
+    }
   }
 
-  // Fallback: escreve o ícone base64 embutido
+  // Fallback: usa base64 embutido
   if (!fs.existsSync(tempIcon)) {
     try {
       const buf = Buffer.from(ICON_BASE64.replace(/\s/g, ''), 'base64')

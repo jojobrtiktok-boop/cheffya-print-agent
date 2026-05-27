@@ -14,7 +14,7 @@ console.log('🔨 Gerando cheffya-print-agent.exe...')
 
 try {
   execSync(
-    `"${PKG_BIN}" src/index.js --target node20-win-x64 --output dist/cheffya-print-agent.exe`,
+    `"${PKG_BIN}" src/index.js --target node20-win-x64 --output dist/cheffya-print-agent.exe --icon assets/icon.ico`,
     { cwd: ROOT, stdio: 'inherit' }
   )
   console.log('✅ dist/cheffya-print-agent.exe gerado com sucesso!')
