@@ -204,7 +204,7 @@ function runPS(script, timeoutMs = 10000) {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { timeout: timeoutMs },
+      { timeout: timeoutMs, windowsHide: true },   // windowsHide=true → sem janela PowerShell visível
       (err, stdout, stderr) => {
         if (stderr && stderr.trim()) log.warn(`[PS stderr] ${stderr.trim().slice(0, 300)}`)
         if (err) return reject(new Error((stderr || err.message || 'Erro PowerShell').trim()))

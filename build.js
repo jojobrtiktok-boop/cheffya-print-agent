@@ -1,6 +1,7 @@
 // build.js — empacota o agente como .exe usando @yao-pkg/pkg
 
-const { execSync } = require('child_process')
+const { execSync }   = require('child_process')
+const { rcedit }     = require('rcedit')
 const path = require('path')
 const fs   = require('fs')
 
@@ -8,14 +9,16 @@ const ROOT    = __dirname
 const DIST    = path.join(ROOT, 'dist')
 const EXE     = path.join(DIST, 'cheffya-print-agent.exe')
 const PKG_BIN = path.join(ROOT, 'node_modules', '.bin', 'pkg')
+const ICON    = path.join(ROOT, 'assets', 'icon.ico')
 
 if (!fs.existsSync(DIST)) fs.mkdirSync(DIST)
 
 // ── Passo 1: gerar o .exe com pkg ────────────────────────────────────────────
 console.log('🔨 Gerando cheffya-print-agent.exe...')
 try {
+  // Não passa --icon aqui: o rcedit (passo 2) embute de forma mais confiável
   execSync(
-    `"${PKG_BIN}" src/index.js --config package.json --target node20-win-x64 --output dist/cheffya-print-agent.exe --icon assets/icon.ico`,
+    `"${PKG_BIN}" src/index.js --config package.json --target node20-win-x64 --output dist/cheffya-print-agent.exe`,
     { cwd: ROOT, stdio: 'inherit' }
   )
 } catch (e) {
@@ -48,25 +51,34 @@ try {
   console.warn('   O .exe ainda funciona, mas pode abrir uma janela CMD.')
 }
 
-// ── Passo 3: gerar o .vbs launcher (backup / compatibilidade) ────────────────
-const vbsDst = path.join(DIST, 'cheffya-print-agent-launcher.vbs')
-fs.writeFileSync(vbsDst, [
-  "' Cheffya Print Agent — Launcher silencioso (backup)",
-  "' Use o .exe diretamente — o subsistema já é WINDOWS",
-  'Dim WshShell, exePath, scriptDir',
-  'Set WshShell = CreateObject("WScript.Shell")',
-  'scriptDir = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)',
-  'exePath = scriptDir & "\\cheffya-print-agent.exe"',
-  'WshShell.Run Chr(34) & exePath & Chr(34), 0, False',
-].join('\r\n'))
-console.log('✅ dist/cheffya-print-agent-launcher.vbs gerado!')
+// ── Passo 3: embeber ícone Cheffya no .exe com rcedit ────────────────────────
+// rcedit modifica o resource table do PE para trocar o ícone — mais confiável
+// que o --icon do pkg, que depende de rcedit interno nem sempre funcional.
+console.log('🎨 Embebendo ícone Cheffya no .exe...')
+;(async () => {
+  try {
+    await rcedit(EXE, { icon: ICON })
+    console.log('✅ Ícone Cheffya embebido com sucesso!')
+  } catch (e) {
+    console.warn(`⚠️  rcedit falhou: ${e.message}`)
+    console.warn('   O .exe funciona, mas sem o ícone correto no Explorer.')
+  }
 
-console.log('')
-console.log('📦 Para instalar no Windows:')
-console.log('   → Duplo clique em cheffya-print-agent.exe  (nenhuma janela abre!)')
-console.log('   → Ícone aparece na bandeja do sistema (system tray)')
-console.log('')
-console.log('📦 Próximos passos:')
-console.log('   1. Crie uma GitHub Release com a tag v' + require('./package.json').version)
-console.log('   2. Faça upload do dist/cheffya-print-agent.exe')
-console.log('   3. Atualize o link de download na app web')
+  // ── Passo 4: gerar o .vbs launcher (backup / compatibilidade) ────────────────
+  const vbsDst = path.join(DIST, 'cheffya-print-agent-launcher.vbs')
+  fs.writeFileSync(vbsDst, [
+    "' Cheffya Print Agent — Launcher silencioso (backup)",
+    "' Use o .exe diretamente — o subsistema já é WINDOWS",
+    'Dim WshShell, exePath, scriptDir',
+    'Set WshShell = CreateObject("WScript.Shell")',
+    'scriptDir = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)',
+    'exePath = scriptDir & "\\cheffya-print-agent.exe"',
+    'WshShell.Run Chr(34) & exePath & Chr(34), 0, False',
+  ].join('\r\n'))
+  console.log('✅ dist/cheffya-print-agent-launcher.vbs gerado!')
+
+  console.log('')
+  console.log('📦 Para instalar no Windows:')
+  console.log('   → Duplo clique em cheffya-print-agent.exe  (nenhuma janela abre!)')
+  console.log('   → Ícone aparece na bandeja do sistema (system tray)')
+})()

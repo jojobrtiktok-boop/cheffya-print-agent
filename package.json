@@ -1,6 +1,6 @@
 {
   "name": "cheffya-print-agent",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Agente local de impressão térmica para Windows — Cheffya / Menu Control",
   "main": "src/index.js",
   "scripts": {
@@ -16,6 +16,7 @@
   "devDependencies": {
     "@yao-pkg/pkg": "^5.11.5",
     "png-to-ico": "^3.0.1",
+    "rcedit": "^5.0.2",
     "sharp": "^0.34.5"
   },
   "pkg": {

@@ -3,20 +3,17 @@
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
-const crypto = require('crypto')
 
 const CONFIG_DIR  = path.join(os.homedir(), 'AppData', 'Roaming', 'CheffyaPrintAgent')
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json')
 
 function versaoAtual() {
-  try { return require('../package.json').version } catch { return '1.0.0' }
+  try { return require('../package.json').version } catch { return '1.0.1' }
 }
 
 const DEFAULTS = {
   porta:        '',
   larguraPapel: 58,   // mm — 58 (32 colunas) ou 80 (42 colunas)
-  token:        crypto.randomBytes(20).toString('hex'),
-  origins:      ['http://localhost:5173', 'http://localhost:3000'],
   versao:       versaoAtual(),
 }
 
