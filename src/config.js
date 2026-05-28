@@ -30,8 +30,9 @@ function ler() {
   }
   try {
     const salvo = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
-    // Garante que novos campos defaults existam
-    return { ...DEFAULTS, ...salvo }
+    // Garante que novos campos defaults existam.
+    // versao sempre reflete o exe atual — nunca o valor salvo em disco.
+    return { ...DEFAULTS, ...salvo, versao: versaoAtual() }
   } catch {
     return { ...DEFAULTS }
   }
