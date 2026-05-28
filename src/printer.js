@@ -183,7 +183,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   b.push(...separador('=', COLS_N))
   if (plataformaTaxa > 0) {
     b.push(...SIZE_HIGH)
-    b.push(...duasColunas('Taxa entrega:', `R$${plataformaTaxa.toFixed(2)}`, COLS_H))
+    b.push(...duasColunas('Taxa de entrega:', `R$${plataformaTaxa.toFixed(2)}`, COLS_H))
   }
   const total = totalItens + plataformaTaxa
   b.push(...SIZE_DOUBLE)
