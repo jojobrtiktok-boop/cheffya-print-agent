@@ -70,6 +70,14 @@ function separador(c = '-', cols = COLS_N) {
   return [...toBytes(c.repeat(cols)), LF]
 }
 
+// ── Parse defensivo de arrays (itens podem vir como JSON string do Supabase) ─
+function parseArr(v) {
+  if (!v) return []
+  if (Array.isArray(v)) return v
+  if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : [] } catch { return [] } }
+  return []
+}
+
 // ── Montar bytes ESC/POS ──────────────────────────────────────────────────────
 function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   const b = []
@@ -136,13 +144,14 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   b.push(...SIZE_HIGH)
 
   let totalItens = 0
-  for (const item of pedido.itens || []) {
+  for (const item of parseArr(pedido.itens)) {
+    if (!item || typeof item !== 'object') continue   // ignora caracteres se itens vier como string
     const nomeRaw  = item.ifoodItemName || item.nome || 'Item'
     const qtd      = item.quantidade || 1
     const preco    = (item.precoUnit || 0) * qtd
     totalItens += preco
 
-    const variacoes   = item.variacoes || []
+    const variacoes   = parseArr(item.variacoes)
     const tamanhoNome = item.tamanho?.nome || ''
     const cleanV = (nome) => tamanhoNome
       ? nome.replace(new RegExp(`\\s*\\(${tamanhoNome}\\)\\s*$`, 'i'), '').trim()
@@ -160,12 +169,12 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
       for (const v of variacoes) b.push(...linha(`  ${frac} ${cleanV(v.nome)}`, COLS_H))
     }
     if (item.borda) b.push(...linha(`  Borda: ${item.borda.nome}`, COLS_H))
-    for (const op of item.opcoes || [])
-      if (op.nome) b.push(...linha(`  + ${op.nome}${op.qtd > 1 ? ` x${op.qtd}` : ''}`, COLS_H))
-    for (const c of item.complementosEscolhidos || [])
-      if (c.nome) b.push(...linha(`  + ${c.nome}${c.qtd > 1 ? ` x${c.qtd}` : ''}`, COLS_H))
-    for (const a of item.adicionaisEscolhidos || [])
-      if (a.nome) b.push(...linha(`  + ${a.nome}${a.qtd > 1 ? ` x${a.qtd}` : ''}`, COLS_H))
+    for (const op of parseArr(item.opcoes))
+      if (op?.nome) b.push(...linha(`  + ${op.nome}${op.qtd > 1 ? ` x${op.qtd}` : ''}`, COLS_H))
+    for (const c of parseArr(item.complementosEscolhidos))
+      if (c?.nome) b.push(...linha(`  + ${c.nome}${c.qtd > 1 ? ` x${c.qtd}` : ''}`, COLS_H))
+    for (const a of parseArr(item.adicionaisEscolhidos))
+      if (a?.nome) b.push(...linha(`  + ${a.nome}${a.qtd > 1 ? ` x${a.qtd}` : ''}`, COLS_H))
     if (item.obs) b.push(...linha(`  Obs: ${item.obs}`, COLS_H))
   }
 
