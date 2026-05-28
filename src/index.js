@@ -46,8 +46,7 @@ async function main() {
     verificarAtualizacao().catch(e => log.warn(`Update check: ${e.message}`))
   }, 5000)
 
-  log.info('Agente pronto. Token: ' + cfg.token.slice(0, 8) + '...')
-  log.info('Configure a porta COM e cole o token na app web para conectar.')
+  log.info('Agente pronto. Configure a impressora pelo ícone na bandeja do sistema.')
 }
 
 main()
