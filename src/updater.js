@@ -87,8 +87,10 @@ async function verificarAtualizacao() {
 
   log.info(`Nova versão disponível: ${nova}`)
 
-  // Encontra o asset .exe no release
-  const asset = (release.assets || []).find(a => a.name.endsWith('.exe'))
+  // Encontra o asset: prefere o core (sem os 3 MB do launcher embutido),
+  // mas aceita qualquer .exe como fallback (releases antigos só têm o wrapper)
+  const asset = (release.assets || []).find(a => a.name === 'cheffya-print-agent-core.exe')
+             || (release.assets || []).find(a => a.name.endsWith('.exe'))
   if (!asset) {
     log.warn('Release não tem .exe para download')
     return false
