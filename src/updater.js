@@ -8,7 +8,7 @@ const { execFile } = require('child_process')
 const log    = require('./logger')
 
 // ── Configuração — ajustar para o repositório correto ────────────────────────
-const GITHUB_OWNER = 'SEU_USUARIO_GITHUB'
+const GITHUB_OWNER = 'jojobrtiktok-boop'
 const GITHUB_REPO  = 'cheffya-print-agent'
 const GITHUB_API   = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
 

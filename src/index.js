@@ -5,6 +5,18 @@ const { ler } = require('./config')
 const { criarServidor } = require('./server')
 const { iniciarTray, configurarAutoStart } = require('./tray')
 const { verificarAtualizacao } = require('./updater')
+const { execSync } = require('child_process')
+const fs   = require('fs')
+
+// ── Remove Zone.Identifier (Mark of the Web) do próprio exe ──────────────────
+// Quando o .exe é baixado da internet, o Windows bloqueia chamadas ao PowerShell
+// usadas para impressão. Este bloco remove o bloqueio automaticamente.
+if (process.pkg) {
+  try {
+    const ads = `${process.execPath}:Zone.Identifier`
+    execSync(`powershell -WindowStyle Hidden -Command "Remove-Item -LiteralPath '${process.execPath}:Zone.Identifier' -ErrorAction SilentlyContinue"`, { stdio: 'ignore' })
+  } catch {}
+}
 
 // Impede múltiplas instâncias: se a porta já estiver em uso, encerra
 process.on('uncaughtException', (err) => {
