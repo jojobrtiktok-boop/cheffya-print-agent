@@ -102,10 +102,28 @@ function criarServidor() {
     }
   })
 
+  // ── Deduplicação de impressão ─────────────────────────────────────────────
+  // Supabase Realtime pode disparar o mesmo INSERT duas vezes (reconexão WS).
+  // O web app já tem dedup, mas este é um segundo layer de proteção no agente.
+  const _printedIds = new Map()   // pedidoId → timestamp
+  const DEDUP_MS    = 30_000      // 30 segundos
+
   // ── POST /imprimir ────────────────────────────────────────────────────────
   app.post('/imprimir', async (req, res) => {
     const { pedido, nomeLoja } = req.body
     if (!pedido) return res.status(400).json({ ok: false, erro: 'pedido é obrigatório' })
+
+    // Dedup: ignora se mesmo pedido já foi impresso nos últimos 30s
+    const pid = pedido.id
+    if (pid) {
+      const last = _printedIds.get(pid)
+      if (last && Date.now() - last < DEDUP_MS) {
+        log.warn(`[dedup] Pedido ${pid} já impresso há ${Date.now() - last}ms — ignorando`)
+        return res.json({ ok: true, duplicado: true })
+      }
+      _printedIds.set(pid, Date.now())
+      setTimeout(() => _printedIds.delete(pid), DEDUP_MS)
+    }
 
     const cfg = ler()
     if (!cfg.porta) return res.status(400).json({ ok: false, erro: 'Nenhuma porta COM configurada. Configure em Alterar porta COM.' })

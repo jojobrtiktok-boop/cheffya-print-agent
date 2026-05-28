@@ -202,7 +202,11 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   b.push(...centrar('Obrigado!', COLS_D))
   b.push(...SIZE_NORMAL)
   b.push(ESC, 0x61, 0x00)
-  b.push(LF, LF, LF)
+
+  // Alimentação extra para empurrar o papel além da barra de corte (~25mm)
+  // + comando de corte parcial (GS V B n) — ignorado por impressoras sem guilhotina
+  b.push(LF, LF, LF, LF, LF, LF, LF, LF)   // 8 linhas ≈ 20-25mm de avanço
+  b.push(GS,  0x56, 0x42, 0x00)              // GS V B 0 — corte parcial ESC/POS
 
   return Buffer.from(b)
 }
