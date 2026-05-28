@@ -203,10 +203,11 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   b.push(...SIZE_NORMAL)
   b.push(ESC, 0x61, 0x00)
 
-  // Alimentação extra para empurrar o papel além da barra de corte (~25mm)
-  // + comando de corte parcial (GS V B n) — ignorado por impressoras sem guilhotina
-  b.push(LF, LF, LF, LF, LF, LF, LF, LF)   // 8 linhas ≈ 20-25mm de avanço
-  b.push(GS,  0x56, 0x42, 0x00)              // GS V B 0 — corte parcial ESC/POS
+  // ESC d n — avança n linhas completas depois da impressão
+  // Isso empurra o papel além da barra de rasgo para poder puxar a notinha.
+  // GS V (cut) removido: maioria das impressoras BR não tem guilhotina e
+  // o comando cortava o papel DENTRO da impressora antes de sair.
+  b.push(0x1B, 0x64, 0x06)  // ESC d 6 — feed 6 linhas
 
   return Buffer.from(b)
 }
