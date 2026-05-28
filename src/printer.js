@@ -203,11 +203,10 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   b.push(...SIZE_NORMAL)
   b.push(ESC, 0x61, 0x00)
 
-  // ESC d n — avança n linhas completas depois da impressão
-  // Isso empurra o papel além da barra de rasgo para poder puxar a notinha.
-  // GS V (cut) removido: maioria das impressoras BR não tem guilhotina e
-  // o comando cortava o papel DENTRO da impressora antes de sair.
-  b.push(0x1B, 0x64, 0x06)  // ESC d 6 — feed 6 linhas
+  // Avanço final com LF simples — compatível com qualquer térmica ESC/POS.
+  // ESC d e GS V removidos: causavam comportamento inesperado em impressoras
+  // mais simples (papel em branco, corte dentro da máquina, etc).
+  b.push(LF, LF, LF, LF, LF, LF)  // 6 LFs ≈ 20-25mm — empurra além da barra de rasgo
 
   return Buffer.from(b)
 }
