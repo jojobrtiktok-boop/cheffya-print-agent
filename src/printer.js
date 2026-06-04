@@ -97,10 +97,10 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   b.push(ESC, 0x40)
   b.push(ESC, 0x45, 0x01)
 
-  // Cabeçalho duplo
+  // ── Cabeçalho (SIZE_HIGH — compacto, sem letras gigantes) ──
   b.push(ESC, 0x61, 0x01)
-  b.push(...SIZE_DOUBLE)
-  if (nomeLoja) b.push(...centrar(nomeLoja.toUpperCase(), COLS_D))
+  b.push(...SIZE_HIGH)
+  if (nomeLoja) b.push(...centrar(nomeLoja.toUpperCase(), COLS_H))
 
   const canalLabel = {
     ifood: 'iFOOD', ifood2: 'iFOOD 2', '99food': '99FOOD',
@@ -108,44 +108,37 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   }
   const canal   = canalLabel[pedido.canal] || (pedido.canal || 'PEDIDO').toUpperCase()
   const shortId = pedido.ifood_short_id || pedido.ifoodShortId || (pedido.id || '----').slice(-6)
-  b.push(...centrar(canal, COLS_D))
-  b.push(...centrar(`#${shortId.toUpperCase()}`, COLS_D))
+  b.push(...centrar(canal, COLS_H))
+  b.push(...centrar(`#${shortId.toUpperCase()}`, COLS_H))
 
   b.push(...SIZE_NORMAL)
   b.push(...centrar(`${pedido.data || ''} ${pedido.hora || ''}`.trim(), COLS_N))
   b.push(ESC, 0x61, 0x00)
   b.push(...separador('=', COLS_N))
 
-  // Cliente
-  b.push(...SIZE_HIGH)
-  if (clienteNome)     b.push(...linha(`Cliente: ${clienteNome}`, COLS_H))
-  if (clienteTelefone) b.push(...linha(`Tel: ${clienteTelefone}`, COLS_H))
+  // ── Cliente e endereço (SIZE_NORMAL) ──
+  if (clienteNome)     b.push(...linha(`Cliente: ${clienteNome}`, COLS_N))
+  if (clienteTelefone) b.push(...linha(`Tel: ${clienteTelefone}`, COLS_N))
 
-  // Endereço
   if (enderecoEntrega) {
-    b.push(...SIZE_NORMAL)
     b.push(...separador('-', COLS_N))
-    b.push(...SIZE_HIGH)
     if (enderecoEntrega === 'Retirada no local') {
-      b.push(...linha('RETIRADA NO LOCAL', COLS_H))
+      b.push(...linha('RETIRADA NO LOCAL', COLS_N))
     } else {
-      b.push(...linha('ENTREGA:', COLS_H))
+      b.push(...linha('ENTREGA:', COLS_N))
       const end = semAcento(enderecoEntrega)
-      for (let i = 0; i < end.length; i += COLS_H)
-        b.push(...linha(end.slice(i, i + COLS_H), COLS_H))
+      for (let i = 0; i < end.length; i += COLS_N)
+        b.push(...linha(end.slice(i, i + COLS_N), COLS_N))
     }
   }
 
-  // Itens
-  b.push(...SIZE_NORMAL)
+  // ── Itens (SIZE_NORMAL) ──
   b.push(...separador('-', COLS_N))
-  b.push(...SIZE_DOUBLE)
-  b.push(...linha('ITENS:', COLS_D))
-  b.push(...SIZE_HIGH)
+  b.push(...linha('ITENS:', COLS_N))
 
   let totalItens = 0
   for (const item of parseArr(pedido.itens)) {
-    if (!item || typeof item !== 'object') continue   // ignora caracteres se itens vier como string
+    if (!item || typeof item !== 'object') continue
     const nomeRaw  = item.ifoodItemName || item.nome || 'Item'
     const qtd      = item.quantidade || 1
     const preco    = (item.precoUnit || 0) * qtd
@@ -162,50 +155,42 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
     else if (variacoes.length > 1)   nomeExibir = tamanhoNome ? `${nomeRaw.split(' (')[0]} (${tamanhoNome})` : nomeRaw.split(' (')[0]
     else                             nomeExibir = nomeRaw
 
-    b.push(...duasColunas(`${qtd}x ${nomeExibir}`, `R$${preco.toFixed(2)}`, COLS_H))
+    b.push(...duasColunas(`${qtd}x ${nomeExibir}`, `R$${preco.toFixed(2)}`, COLS_N))
 
     if (variacoes.length > 1) {
       const frac = variacoes.length === 2 ? '1/2' : '1/3'
-      for (const v of variacoes) b.push(...linha(`  ${frac} ${cleanV(v.nome)}`, COLS_H))
+      for (const v of variacoes) b.push(...linha(`  ${frac} ${cleanV(v.nome)}`, COLS_N))
     }
-    if (item.borda) b.push(...linha(`  Borda: ${item.borda.nome}`, COLS_H))
+    if (item.borda) b.push(...linha(`  Borda: ${item.borda.nome}`, COLS_N))
     for (const op of parseArr(item.opcoes))
-      if (op?.nome) b.push(...linha(`  + ${op.nome}${op.qtd > 1 ? ` x${op.qtd}` : ''}`, COLS_H))
+      if (op?.nome) b.push(...linha(`  + ${op.nome}${op.qtd > 1 ? ` x${op.qtd}` : ''}`, COLS_N))
     for (const c of parseArr(item.complementosEscolhidos))
-      if (c?.nome) b.push(...linha(`  + ${c.nome}${c.qtd > 1 ? ` x${c.qtd}` : ''}`, COLS_H))
+      if (c?.nome) b.push(...linha(`  + ${c.nome}${c.qtd > 1 ? ` x${c.qtd}` : ''}`, COLS_N))
     for (const a of parseArr(item.adicionaisEscolhidos))
-      if (a?.nome) b.push(...linha(`  + ${a.nome}${a.qtd > 1 ? ` x${a.qtd}` : ''}`, COLS_H))
-    if (item.obs) b.push(...linha(`  Obs: ${item.obs}`, COLS_H))
+      if (a?.nome) b.push(...linha(`  + ${a.nome}${a.qtd > 1 ? ` x${a.qtd}` : ''}`, COLS_N))
+    if (item.obs) b.push(...linha(`  Obs: ${item.obs}`, COLS_N))
   }
 
-  // Totais
-  b.push(...SIZE_NORMAL)
+  // ── Totais ──
   b.push(...separador('=', COLS_N))
   if (plataformaTaxa > 0) {
-    b.push(...SIZE_HIGH)
-    b.push(...duasColunas('Taxa de entrega:', `R$${plataformaTaxa.toFixed(2)}`, COLS_H))
+    b.push(...duasColunas('Taxa de entrega:', `R$${plataformaTaxa.toFixed(2)}`, COLS_N))
   }
   const total = totalItens + plataformaTaxa
-  b.push(...SIZE_DOUBLE)
-  b.push(...duasColunas('TOTAL:', `R$${total.toFixed(2)}`, COLS_D))
   b.push(...SIZE_HIGH)
-  if (formaPagamento) b.push(...linha(`Pgto: ${labelPgto[formaPagamento] || formaPagamento}`, COLS_H))
+  b.push(...duasColunas('TOTAL:', `R$${total.toFixed(2)}`, COLS_H))
+  b.push(...SIZE_NORMAL)
+  if (formaPagamento) b.push(...linha(`Pgto: ${labelPgto[formaPagamento] || formaPagamento}`, COLS_N))
   if (pedido.obs) {
     const obs = semAcento(String(pedido.obs))
-    for (let i = 0; i < obs.length; i += COLS_H)
-      b.push(...linha((i === 0 ? 'Obs: ' : '     ') + obs.slice(i, i + COLS_H - 5), COLS_H))
+    for (let i = 0; i < obs.length; i += COLS_N)
+      b.push(...linha((i === 0 ? 'Obs: ' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
   }
-  b.push(...SIZE_NORMAL)
   b.push(...separador('=', COLS_N))
   b.push(ESC, 0x61, 0x01)
-  b.push(...SIZE_DOUBLE)
-  b.push(...centrar('Obrigado!', COLS_D))
-  b.push(...SIZE_NORMAL)
+  b.push(...centrar('Obrigado!', COLS_N))
   b.push(ESC, 0x61, 0x00)
 
-  // Avanço final com LF simples — compatível com qualquer térmica ESC/POS.
-  // ESC d e GS V removidos: causavam comportamento inesperado em impressoras
-  // mais simples (papel em branco, corte dentro da máquina, etc).
   b.push(LF, LF, LF, LF, LF, LF)  // 6 LFs ≈ 20-25mm — empurra além da barra de rasgo
 
   return Buffer.from(b)
