@@ -129,7 +129,8 @@ function criarServidor() {
     if (!cfg.porta) return res.status(400).json({ ok: false, erro: 'Nenhuma porta COM configurada. Configure em Alterar porta COM.' })
 
     try {
-      await imprimir(pedido, nomeLoja || '', cfg.porta, cfg.larguraPapel || 58)
+      const modoVia = (nomeLoja || '').includes('COZINHA') ? 'cozinha' : 'completo'
+      await imprimir(pedido, nomeLoja || '', cfg.porta, cfg.larguraPapel || 58, modoVia)
       res.json({ ok: true })
     } catch (e) {
       log.error(`Erro ao imprimir: ${e.message}`)

@@ -79,9 +79,11 @@ function parseArr(v) {
 }
 
 // ── Montar bytes ESC/POS ──────────────────────────────────────────────────────
-function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
+// modoVia: 'completo' (com preços) | 'cozinha' (sem preços, sem total)
+function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'completo') {
   const b = []
-  const { N: COLS_N, H: COLS_H, D: COLS_D } = getCols(larguraPapel)
+  const { N: COLS_N, H: COLS_H } = getCols(larguraPapel)
+  const semPreco = modoVia === 'cozinha'
 
   const clienteNome     = pedido.cliente_nome     || pedido.clienteNome
   const clienteTelefone = pedido.cliente_telefone || pedido.clienteTelefone
@@ -97,7 +99,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   b.push(ESC, 0x40)
   b.push(ESC, 0x45, 0x01)
 
-  // ── Cabeçalho (SIZE_HIGH — compacto, sem letras gigantes) ──
+  // ── Cabeçalho ──
   b.push(ESC, 0x61, 0x01)
   b.push(...SIZE_HIGH)
   if (nomeLoja) b.push(...centrar(nomeLoja.toUpperCase(), COLS_H))
@@ -107,7 +109,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
     keeta: 'KEETA', delivery: 'DELIVERY', balcao: 'BALCAO',
   }
   const canal   = canalLabel[pedido.canal] || (pedido.canal || 'PEDIDO').toUpperCase()
-  const shortId = pedido.ifood_short_id || pedido.ifoodShortId || (pedido.id || '----').slice(-6)
+  const shortId = pedido.ifood_short_id || pedido.ifoodShortId || (pedido.id || '----').replace(/_coz$/, '').slice(-6)
   b.push(...centrar(canal, COLS_H))
   b.push(...centrar(`#${shortId.toUpperCase()}`, COLS_H))
 
@@ -116,7 +118,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
   b.push(ESC, 0x61, 0x00)
   b.push(...separador('=', COLS_N))
 
-  // ── Cliente e endereço (SIZE_NORMAL) ──
+  // ── Cliente e endereço ──
   if (clienteNome)     b.push(...linha(`Cliente: ${clienteNome}`, COLS_N))
   if (clienteTelefone) b.push(...linha(`Tel: ${clienteTelefone}`, COLS_N))
 
@@ -132,7 +134,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
     }
   }
 
-  // ── Itens (SIZE_NORMAL) ──
+  // ── Itens ──
   b.push(...separador('-', COLS_N))
   b.push(...linha('ITENS:', COLS_N))
 
@@ -144,54 +146,119 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58) {
     const preco    = (item.precoUnit || 0) * qtd
     totalItens += preco
 
-    const variacoes   = parseArr(item.variacoes)
-    const tamanhoNome = item.tamanho?.nome || ''
+    const variacoes        = parseArr(item.variacoes)
+    const gruposEscolhidos = parseArr(item.gruposEscolhidos)
+    const tamanhoNome      = item.tamanho?.nome || ''
     const cleanV = (nome) => tamanhoNome
       ? nome.replace(new RegExp(`\\s*\\(${tamanhoNome}\\)\\s*$`, 'i'), '').trim()
       : nome
 
+    // ── Nome do produto ──
+    // Se tem grupos de sabores, mostra o nome do produto sem os sabores inline
+    const temGruposSabores = gruposEscolhidos.length > 0
     let nomeExibir
-    if (variacoes.length === 1)      nomeExibir = cleanV(variacoes[0].nome)
-    else if (variacoes.length > 1)   nomeExibir = tamanhoNome ? `${nomeRaw.split(' (')[0]} (${tamanhoNome})` : nomeRaw.split(' (')[0]
-    else                             nomeExibir = nomeRaw
+    if (variacoes.length === 1 && !temGruposSabores) nomeExibir = cleanV(variacoes[0].nome)
+    else if (variacoes.length > 1 && !temGruposSabores) nomeExibir = tamanhoNome ? `${nomeRaw.split(' (')[0]} (${tamanhoNome})` : nomeRaw.split(' (')[0]
+    else nomeExibir = nomeRaw
 
-    b.push(...duasColunas(`${qtd}x ${nomeExibir}`, `R$${preco.toFixed(2)}`, COLS_N))
+    if (semPreco) {
+      b.push(...linha(`${qtd}x ${nomeExibir}`, COLS_N))
+    } else {
+      b.push(...duasColunas(`${qtd}x ${nomeExibir}`, `R$${preco.toFixed(2)}`, COLS_N))
+    }
 
-    if (variacoes.length > 1) {
+    // ── Sabores simples (variacoes sem grupos de sabores) ──
+    if (variacoes.length > 1 && !temGruposSabores) {
       const frac = variacoes.length === 2 ? '1/2' : '1/3'
       for (const v of variacoes) b.push(...linha(`  ${frac} ${cleanV(v.nome)}`, COLS_N))
     }
-    if (item.borda) b.push(...linha(`  Borda: ${item.borda.nome}`, COLS_N))
-    for (const op of parseArr(item.opcoes))
-      if (op?.nome) b.push(...linha(`  + ${op.nome}${op.qtd > 1 ? ` x${op.qtd}` : ''}`, COLS_N))
-    for (const c of parseArr(item.complementosEscolhidos))
-      if (c?.nome) b.push(...linha(`  + ${c.nome}${c.qtd > 1 ? ` x${c.qtd}` : ''}`, COLS_N))
-    for (const a of parseArr(item.adicionaisEscolhidos))
-      if (a?.nome) b.push(...linha(`  + ${a.nome}${a.qtd > 1 ? ` x${a.qtd}` : ''}`, COLS_N))
+
+    // ── Grupos de sabores (gruposEscolhidos) ──
+    for (const grupo of gruposEscolhidos) {
+      if (!grupo?.titulo) continue
+      const vars = parseArr(grupo.variacoes)
+      if (!vars.length) continue
+      b.push(...linha(`  ${grupo.titulo}:`, COLS_N))
+      for (const v of vars) {
+        const nomeV = v.nome || ''
+        const qtdV  = v.quantidade || v.qtd || 1
+        b.push(...linha(`    ${qtdV > 1 ? qtdV + 'x ' : ''}${nomeV}`, COLS_N))
+      }
+    }
+
+    // ── Opções agrupadas por grupoNome ──
+    const opcoes = parseArr(item.opcoes)
+    if (opcoes.length > 0) {
+      // Agrupa por grupoNome; opções sem grupoNome ficam num grupo genérico
+      const grupos = []
+      const mapaIdx = {}
+      for (const op of opcoes) {
+        if (!op?.nome) continue
+        const chave = op.grupoNome || ''
+        if (mapaIdx[chave] === undefined) { mapaIdx[chave] = grupos.length; grupos.push({ nome: chave, itens: [] }) }
+        grupos[mapaIdx[chave]].itens.push(op)
+      }
+      for (const g of grupos) {
+        if (g.nome) b.push(...linha(`  ${g.nome}:`, COLS_N))
+        for (const op of g.itens)
+          b.push(...linha(`    ${op.qtd > 1 ? op.qtd + 'x ' : ''}${op.nome}`, COLS_N))
+      }
+    }
+
+    // ── Borda ──
+    if (item.borda) {
+      b.push(...linha(`  Borda:`, COLS_N))
+      b.push(...linha(`    ${item.borda.nome}`, COLS_N))
+    }
+
+    // ── Complementos ──
+    const comps = parseArr(item.complementosEscolhidos)
+    if (comps.length > 0) {
+      b.push(...linha(`  Complementos:`, COLS_N))
+      for (const c of comps) if (c?.nome) b.push(...linha(`    ${c.qtd > 1 ? c.qtd + 'x ' : ''}${c.nome}`, COLS_N))
+    }
+
+    // ── Adicionais ──
+    const adics = parseArr(item.adicionaisEscolhidos)
+    if (adics.length > 0) {
+      b.push(...linha(`  Adicionais:`, COLS_N))
+      for (const a of adics) if (a?.nome) b.push(...linha(`    ${a.qtd > 1 ? a.qtd + 'x ' : ''}${a.nome}`, COLS_N))
+    }
+
     if (item.obs) b.push(...linha(`  Obs: ${item.obs}`, COLS_N))
   }
 
-  // ── Totais ──
+  // ── Totais (só na via completa) ──
   b.push(...separador('=', COLS_N))
-  if (plataformaTaxa > 0) {
-    b.push(...duasColunas('Taxa de entrega:', `R$${plataformaTaxa.toFixed(2)}`, COLS_N))
+  if (!semPreco) {
+    if (plataformaTaxa > 0) {
+      b.push(...duasColunas('Taxa de entrega:', `R$${plataformaTaxa.toFixed(2)}`, COLS_N))
+    }
+    const total = totalItens + plataformaTaxa
+    b.push(...SIZE_HIGH)
+    b.push(...duasColunas('TOTAL:', `R$${total.toFixed(2)}`, COLS_H))
+    b.push(...SIZE_NORMAL)
+    if (formaPagamento) b.push(...linha(`Pgto: ${labelPgto[formaPagamento] || formaPagamento}`, COLS_N))
+    if (pedido.obs) {
+      const obs = semAcento(String(pedido.obs))
+      for (let i = 0; i < obs.length; i += COLS_N)
+        b.push(...linha((i === 0 ? 'Obs: ' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
+    }
+    b.push(...separador('=', COLS_N))
+    b.push(ESC, 0x61, 0x01)
+    b.push(...centrar('Obrigado!', COLS_N))
+    b.push(ESC, 0x61, 0x00)
+  } else {
+    // Via cozinha: mostra obs se tiver
+    if (pedido.obs) {
+      const obs = semAcento(String(pedido.obs))
+      for (let i = 0; i < obs.length; i += COLS_N)
+        b.push(...linha((i === 0 ? 'Obs: ' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
+      b.push(...separador('=', COLS_N))
+    }
   }
-  const total = totalItens + plataformaTaxa
-  b.push(...SIZE_HIGH)
-  b.push(...duasColunas('TOTAL:', `R$${total.toFixed(2)}`, COLS_H))
-  b.push(...SIZE_NORMAL)
-  if (formaPagamento) b.push(...linha(`Pgto: ${labelPgto[formaPagamento] || formaPagamento}`, COLS_N))
-  if (pedido.obs) {
-    const obs = semAcento(String(pedido.obs))
-    for (let i = 0; i < obs.length; i += COLS_N)
-      b.push(...linha((i === 0 ? 'Obs: ' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
-  }
-  b.push(...separador('=', COLS_N))
-  b.push(ESC, 0x61, 0x01)
-  b.push(...centrar('Obrigado!', COLS_N))
-  b.push(ESC, 0x61, 0x00)
 
-  b.push(LF, LF, LF, LF, LF, LF)  // 6 LFs ≈ 20-25mm — empurra além da barra de rasgo
+  b.push(LF, LF, LF, LF, LF, LF)
 
   return Buffer.from(b)
 }
@@ -361,10 +428,10 @@ catch { Write-Host "ERRO:$($_.Exception.Message)" }
 }
 
 // ── Imprimir pedido ───────────────────────────────────────────────────────────
-async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58) {
+async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVia = 'completo') {
   if (!dispositivo) throw new Error('Nenhum dispositivo configurado. Configure em Alterar porta / impressora.')
-  const dados = montarEscPos(pedido, nomeLoja, larguraPapel)
-  log.info(`Imprimindo ${dados.length} bytes em "${dispositivo}" (papel ${larguraPapel}mm)`)
+  const dados = montarEscPos(pedido, nomeLoja, larguraPapel, modoVia)
+  log.info(`Imprimindo ${dados.length} bytes em "${dispositivo}" (papel ${larguraPapel}mm, via=${modoVia})`)
   if (ehPortaCOM(dispositivo)) {
     await escrevePortaCOM(dispositivo, dados)
   } else {
