@@ -85,120 +85,123 @@ async function iniciarTray(onQuit) {
     return null
   }
 
-  const cfg    = ler()
-  const portas = await listarPortas().catch(() => [])
-  const papel  = cfg.larguraPapel || 58
-
-  // ── Sub-menu: dispositivos ─────────────────────────────────────────────────
-  const itensPorta = portas.length > 0
-    ? portas.map(p => ({
-        title:   `${p.path}${p.path === cfg.porta ? ' ✓' : ''}`,
-        tooltip: p.descricao || p.path,
-        checked: p.path === cfg.porta,
-        enabled: true,
-      }))
-    : [{ title: 'Nenhum dispositivo encontrado', tooltip: '', checked: false, enabled: false }]
-
-  // ── Sub-menu: largura de papel ─────────────────────────────────────────────
-  const itensPapel = [
-    { title: `58mm${papel === 58 ? ' ✓' : ''}`, tooltip: '32 colunas — papel 58mm', checked: papel === 58, enabled: true },
-    { title: `80mm${papel === 80 ? ' ✓' : ''}`, tooltip: '42 colunas — papel 80mm', checked: papel === 80, enabled: true },
-  ]
-
   const iconePath = extrairIcone()
+  let tray = null
+  let portasAtuais = []
 
-  const menu = {
-    icon:    iconePath,
-    title:   '',
-    tooltip: `Cheffya Print Agent v${cfg.versao}`,
-    items: [
-      { title: cfg.porta ? `● ${cfg.porta}` : '○ Impressora não configurada', tooltip: '', checked: false, enabled: false },
-      Systray.separator,
-      { title: 'Alterar impressora',    tooltip: '', checked: false, enabled: true, items: itensPorta  },
-      { title: `Papel: ${papel}mm`,     tooltip: '', checked: false, enabled: true, items: itensPapel  },
-      Systray.separator,
-      { title: 'Testar impressão',      tooltip: '', checked: false, enabled: true },
-      { title: 'Verificar atualização', tooltip: '', checked: false, enabled: true },
-      Systray.separator,
-      { title: `v${cfg.versao}`,        tooltip: 'Versão atual', checked: false, enabled: false },
-      Systray.separator,
-      { title: 'Sair',                  tooltip: 'Encerrar o agente', checked: false, enabled: true },
-    ],
-  }
-
-  let tray
-  try {
-    tray = new Systray({ menu, debug: false, copyDir: false })
-  } catch (e) {
-    log.warn(`Falha ao criar tray: ${e.message}`)
-    return null
-  }
-
-  // ── onClick — usa o TÍTULO do item em vez de seq_id numérico ──────────────
-  // Muito mais robusto: adicionar/remover itens não quebra os handlers.
-  tray.onClick(action => {
-    const titulo = (action.item?.title || '').trim()
-    log.info(`[CLICK] "${titulo}"`)
-
-    // ── Seleção de dispositivo ─────────────────────────────────────────────
-    const porta = portas.find(p => titulo.startsWith(p.path))
-    if (porta) {
-      salvar({ porta: porta.path })
-      log.info(`Dispositivo selecionado: ${porta.path}`)
-      return
+  // ── Cria/recria o menu da bandeja com lista de impressoras atualizada ──────
+  async function criarTray() {
+    // Mata o tray anterior sem sair do processo
+    if (tray) {
+      try { tray.kill(false) } catch {}
+      tray = null
+      await new Promise(r => setTimeout(r, 400)) // aguarda destruição
     }
 
-    // ── Seleção de largura de papel ────────────────────────────────────────
-    if (titulo.startsWith('58mm')) {
-      salvar({ larguraPapel: 58 })
-      log.info('Papel configurado: 58mm (32 colunas)')
-      return
-    }
-    if (titulo.startsWith('80mm')) {
-      salvar({ larguraPapel: 80 })
-      log.info('Papel configurado: 80mm (42 colunas)')
-      return
+    const cfg   = ler()
+    const papel = cfg.larguraPapel || 58
+    portasAtuais = await listarPortas().catch(() => [])
+
+    const itensPorta = portasAtuais.length > 0
+      ? portasAtuais.map(p => ({
+          title:   `${p.path}${p.path === cfg.porta ? ' ✓' : ''}`,
+          tooltip: p.descricao || p.path,
+          checked: p.path === cfg.porta,
+          enabled: true,
+        }))
+      : [{ title: 'Nenhum dispositivo encontrado', tooltip: '', checked: false, enabled: false }]
+
+    const itensPapel = [
+      { title: `58mm${papel === 58 ? ' ✓' : ''}`, tooltip: '32 colunas — papel 58mm', checked: papel === 58, enabled: true },
+      { title: `80mm${papel === 80 ? ' ✓' : ''}`, tooltip: '42 colunas — papel 80mm', checked: papel === 80, enabled: true },
+    ]
+
+    const menu = {
+      icon:    iconePath,
+      title:   '',
+      tooltip: `Cheffya Print Agent v${cfg.versao}`,
+      items: [
+        { title: cfg.porta ? `● ${cfg.porta}` : '○ Impressora nao configurada', tooltip: '', checked: false, enabled: false },
+        Systray.separator,
+        { title: 'Alterar impressora',     tooltip: '', checked: false, enabled: true, items: itensPorta },
+        { title: `Papel: ${papel}mm`,      tooltip: '', checked: false, enabled: true, items: itensPapel },
+        { title: 'Atualizar impressoras',  tooltip: 'Buscar impressoras conectadas agora', checked: false, enabled: true },
+        Systray.separator,
+        { title: 'Testar impressao',       tooltip: '', checked: false, enabled: true },
+        { title: 'Verificar atualizacao',  tooltip: '', checked: false, enabled: true },
+        Systray.separator,
+        { title: `v${cfg.versao}`,         tooltip: 'Versao atual', checked: false, enabled: false },
+        Systray.separator,
+        { title: 'Sair',                   tooltip: 'Encerrar o agente', checked: false, enabled: true },
+      ],
     }
 
-    // ── Testar impressão ───────────────────────────────────────────────────
-    if (titulo === 'Testar impressão') {
-      const { testar } = require('./printer')
-      const c = ler()
-      if (!c.porta) {
-        log.warn('Selecione uma impressora primeiro (Alterar impressora).')
+    try {
+      tray = new Systray({ menu, debug: false, copyDir: false })
+    } catch (e) {
+      log.warn(`Falha ao criar tray: ${e.message}`)
+      return null
+    }
+
+    tray.onClick(action => {
+      const titulo = (action.item?.title || '').trim()
+      log.info(`[CLICK] "${titulo}"`)
+
+      // ── Seleção de dispositivo ───────────────────────────────────────────
+      const porta = portasAtuais.find(p => titulo.startsWith(p.path))
+      if (porta) {
+        salvar({ porta: porta.path })
+        log.info(`Dispositivo selecionado: ${porta.path}`)
         return
       }
-      log.info(`Disparando teste de impressão em "${c.porta}" (${c.larguraPapel || 58}mm)...`)
-      testar(c.porta, c.larguraPapel || 58)
-        .then(() => log.info('Teste enviado com sucesso'))
-        .catch(e => log.error(`Teste falhou: ${e.message}`))
-      return
-    }
 
-    // ── Verificar atualização ──────────────────────────────────────────────
-    if (titulo === 'Verificar atualização') {
-      verificarAtualizacao().catch(e => log.error(`Update check: ${e.message}`))
-      return
-    }
+      // ── Largura de papel ─────────────────────────────────────────────────
+      if (titulo.startsWith('58mm')) { salvar({ larguraPapel: 58 }); log.info('Papel: 58mm'); return }
+      if (titulo.startsWith('80mm')) { salvar({ larguraPapel: 80 }); log.info('Papel: 80mm'); return }
 
-    // ── Sair ───────────────────────────────────────────────────────────────
-    if (titulo === 'Sair') {
-      log.info('Encerrando por solicitação do usuário')
-      removerAutoStart()
-      if (onQuit) onQuit()
-      tray.kill(false)
-      setTimeout(() => {
-        log.info('Saindo (process.exit)')
-        process.exit(0)
-      }, 400)
-      return
-    }
+      // ── Atualizar impressoras (recria menu com nova varredura) ───────────
+      if (titulo === 'Atualizar impressoras') {
+        log.info('Atualizando lista de impressoras...')
+        criarTray().catch(e => log.error(`Erro ao recriar tray: ${e.message}`))
+        return
+      }
 
-    // Itens desabilitados (status, versão) ou pais de submenu não geram ação
-  })
+      // ── Testar impressão ─────────────────────────────────────────────────
+      if (titulo === 'Testar impressao') {
+        const { testar } = require('./printer')
+        const c = ler()
+        if (!c.porta) { log.warn('Selecione uma impressora primeiro.'); return }
+        log.info(`Teste em "${c.porta}" (${c.larguraPapel || 58}mm)...`)
+        testar(c.porta, c.larguraPapel || 58)
+          .then(() => log.info('Teste enviado com sucesso'))
+          .catch(e => log.error(`Teste falhou: ${e.message}`))
+        return
+      }
 
-  log.info('Ícone da bandeja inicializado')
-  return tray
+      // ── Verificar atualização ────────────────────────────────────────────
+      if (titulo === 'Verificar atualizacao') {
+        verificarAtualizacao()
+          .then(atualizou => { if (!atualizou) criarTray().catch(() => {}) })
+          .catch(e => log.error(`Update check: ${e.message}`))
+        return
+      }
+
+      // ── Sair ─────────────────────────────────────────────────────────────
+      if (titulo === 'Sair') {
+        log.info('Encerrando por solicitacao do usuario')
+        removerAutoStart()
+        if (onQuit) onQuit()
+        if (tray) tray.kill(false)
+        setTimeout(() => { log.info('Saindo (process.exit)'); process.exit(0) }, 400)
+        return
+      }
+    })
+
+    log.info(`Bandeja criada — v${cfg.versao} — ${portasAtuais.length} impressora(s) encontrada(s)`)
+    return tray
+  }
+
+  return criarTray()
 }
 
 // ── Auto-start (Startup folder do Windows) ───────────────────────────────────
