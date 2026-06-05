@@ -27,13 +27,36 @@ function compararVersao(a, b) {
   return false
 }
 
-function baixarArquivo(url, destino) {
+// ── Notificação balloon do Windows ───────────────────────────────────────────
+function notificar(titulo, texto) {
+  const t = titulo.replace(/'/g, "''")
+  const m = texto.replace(/'/g, "''")
+  const ps = `
+Add-Type -AssemblyName System.Windows.Forms
+$n = New-Object System.Windows.Forms.NotifyIcon
+$n.Icon = [System.Drawing.SystemIcons]::Information
+$n.Visible = $true
+$n.BalloonTipTitle = '${t}'
+$n.BalloonTipText  = '${m}'
+$n.ShowBalloonTip(5000)
+Start-Sleep -Milliseconds 5500
+$n.Dispose()
+`
+  try {
+    execFile('powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps],
+      { detached: true, windowsHide: true }
+    ).unref()
+  } catch {}
+}
+
+// ── Download com progresso ────────────────────────────────────────────────────
+function baixarArquivo(url, destino, onProgresso) {
   return new Promise((resolve, reject) => {
     const arquivo = fs.createWriteStream(destino)
 
     function pedirUrl(u) {
       https.get(u, { headers: { 'User-Agent': 'cheffya-print-agent' } }, res => {
-        // Segue redirecionamentos
         if (res.statusCode === 301 || res.statusCode === 302) {
           arquivo.close()
           return pedirUrl(res.headers.location)
@@ -42,6 +65,20 @@ function baixarArquivo(url, destino) {
           arquivo.close()
           return reject(new Error(`Download falhou: HTTP ${res.statusCode}`))
         }
+        const total = parseInt(res.headers['content-length'] || '0', 10)
+        let recebido = 0
+        let ultimoPct = -1
+
+        res.on('data', chunk => {
+          recebido += chunk.length
+          if (total > 0 && onProgresso) {
+            const pct = Math.floor((recebido / total) * 100)
+            if (pct !== ultimoPct && pct % 25 === 0) {
+              ultimoPct = pct
+              onProgresso(pct, recebido, total)
+            }
+          }
+        })
         res.pipe(arquivo)
         arquivo.on('finish', () => { arquivo.close(); resolve() })
         arquivo.on('error', reject)
@@ -86,30 +123,36 @@ async function verificarAtualizacao() {
   }
 
   log.info(`Nova versão disponível: ${nova}`)
+  notificar('Cheffya Print Agent', `Nova versão ${nova} encontrada! Iniciando download...`)
 
-  // Encontra o asset: prefere o core (sem os 3 MB do launcher embutido),
-  // mas aceita qualquer .exe como fallback (releases antigos só têm o wrapper)
   const asset = (release.assets || []).find(a => a.name === 'cheffya-print-agent-core.exe')
              || (release.assets || []).find(a => a.name.endsWith('.exe'))
   if (!asset) {
     log.warn('Release não tem .exe para download')
+    notificar('Cheffya Print Agent', 'Erro: release sem arquivo para download.')
     return false
   }
 
-  // Caminho do exe atual (funciona tanto em pkg quanto em node direto)
-  const exeAtual  = process.pkg ? process.execPath : path.join(__dirname, '..', 'dist', 'cheffya-print-agent.exe')
-  const exeNovo   = path.join(os.tmpdir(), 'cheffya-agent-new.exe')
-  const batPath   = path.join(os.tmpdir(), 'cheffya-update.bat')
+  const exeAtual = process.pkg ? process.execPath : path.join(__dirname, '..', 'dist', 'cheffya-print-agent.exe')
+  const exeNovo  = path.join(os.tmpdir(), 'cheffya-agent-new.exe')
+  const batPath  = path.join(os.tmpdir(), 'cheffya-update.bat')
 
   log.info(`Baixando ${nova}...`)
   try {
-    await baixarArquivo(asset.browser_download_url, exeNovo)
+    await baixarArquivo(asset.browser_download_url, exeNovo, (pct, recebido, total) => {
+      const mb = (recebido / 1024 / 1024).toFixed(1)
+      const mbTotal = (total / 1024 / 1024).toFixed(1)
+      log.info(`Download ${nova}: ${pct}% (${mb}/${mbTotal} MB)`)
+      if (pct === 50) notificar('Cheffya — Atualizando', `Baixando ${nova}... 50% concluído`)
+    })
   } catch (e) {
     log.error(`Falha no download: ${e.message}`)
+    notificar('Cheffya Print Agent', `Falha no download: ${e.message}`)
     return false
   }
 
-  // Gera script .bat com retry (máx 10 tentativas, ~3s cada)
+  notificar('Cheffya Print Agent', `Download concluído! Instalando ${nova} e reiniciando...`)
+
   const bat = `@echo off
 set /a tries=0
 :retry
@@ -125,10 +168,7 @@ start "" "${exeAtual}"
 del "%~f0"
 `
   fs.writeFileSync(batPath, bat)
-
   log.info(`Atualizando para ${nova}... O agente vai reiniciar.`)
-
-  // Lança o .bat e encerra este processo
   execFile('cmd.exe', ['/c', batPath], { detached: true, stdio: 'ignore' }).unref()
   setTimeout(() => process.exit(0), 500)
   return true
