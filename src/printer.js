@@ -161,11 +161,8 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     else if (variacoes.length > 1 && !temGruposSabores) nomeExibir = tamanhoNome ? `${nomeRaw.split(' (')[0]} (${tamanhoNome})` : nomeRaw.split(' (')[0]
     else nomeExibir = nomeRaw
 
-    if (semPreco) {
-      b.push(...linha(`${qtd}x ${nomeExibir}`, COLS_N))
-    } else {
-      b.push(...duasColunas(`${qtd}x ${nomeExibir}`, `R$${preco.toFixed(2)}`, COLS_N))
-    }
+    // ── Nome do produto (sem preço ainda — preço vai depois das opções) ──
+    b.push(...linha(`${qtd}x ${nomeExibir}`, COLS_N))
 
     // ── Sabores simples (variacoes sem grupos de sabores) ──
     if (variacoes.length > 1 && !temGruposSabores) {
@@ -189,7 +186,6 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     // ── Opções agrupadas por grupoNome ──
     const opcoes = parseArr(item.opcoes)
     if (opcoes.length > 0) {
-      // Agrupa por grupoNome; opções sem grupoNome ficam num grupo genérico
       const grupos = []
       const mapaIdx = {}
       for (const op of opcoes) {
@@ -226,6 +222,10 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     }
 
     if (item.obs) b.push(...linha(`  Obs: ${item.obs}`, COLS_N))
+
+    // ── Preço em baixo (após todas as opções) + linha em branco separando itens ──
+    if (!semPreco) b.push(...duasColunas('', `R$${preco.toFixed(2)}`, COLS_N))
+    b.push(LF)  // linha em branco entre itens
   }
 
   // ── Totais (só na via completa) ──
