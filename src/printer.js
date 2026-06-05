@@ -257,9 +257,9 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     // Obs do item — "Obs:" bold, texto normal
     if (item.obs) b.push(...linhaLV('  Obs: ', semAcento(String(item.obs)), COLS_N))
 
-    // Preço em baixo alinhado à direita (só via completa)
+    // Preço em negrito logo abaixo (só via completa)
     if (!semPreco) {
-      b.push(...BOLD_OFF, ...duasColunas('', `R$${preco.toFixed(2)}`, COLS_N))
+      b.push(...linhaN(`R$${preco.toFixed(2)}`, COLS_N))
     }
 
     b.push(LF)  // linha em branco entre itens
