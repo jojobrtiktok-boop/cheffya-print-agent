@@ -79,6 +79,32 @@ function parseArr(v) {
 }
 
 // ── Montar bytes ESC/POS ──────────────────────────────────────────────────────
+// ── Helpers de negrito ────────────────────────────────────────────────────────
+const BOLD_ON  = [ESC, 0x45, 0x01]
+const BOLD_OFF = [ESC, 0x45, 0x00]
+
+// Linha em negrito
+function linhaN(txt, cols) {
+  return [...BOLD_ON, ...toBytes((txt || '').slice(0, cols)), LF, ...BOLD_OFF]
+}
+// Linha normal (sem negrito)
+function linhaL(txt, cols) {
+  return [...BOLD_OFF, ...toBytes((txt || '').slice(0, cols)), LF]
+}
+// Duas colunas: esquerda bold, direita normal, alinhado à direita
+function duasColB(esq, dir, cols) {
+  const d = (dir || '').slice(0, Math.ceil(cols / 2))
+  const e = (esq || '').slice(0, cols - d.length - 1)
+  const esp = ' '.repeat(Math.max(1, cols - e.length - d.length))
+  return [...BOLD_ON, ...toBytes(e), ...BOLD_OFF, ...toBytes(esp + d), LF]
+}
+// Linha com label bold + valor normal na mesma linha: "Label: valor"
+function linhaLV(label, valor, cols) {
+  const l = semAcento(label)
+  const v = semAcento(valor || '').slice(0, cols - l.length)
+  return [...BOLD_ON, ...toBytes(l), ...BOLD_OFF, ...toBytes(v), LF]
+}
+
 // modoVia: 'completo' (com preços) | 'cozinha' (sem preços, sem total)
 function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'completo') {
   const b = []
@@ -95,13 +121,15 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     cartaoDebito: 'Debito', cartao: 'Cartao', pixWhatsapp: 'PIX WPP',
   }
 
-  // Init: reset + negrito global
+  // Init: reset, bold off, tamanho normal
   b.push(ESC, 0x40)
-  b.push(ESC, 0x45, 0x01)
+  b.push(...BOLD_OFF)
+  b.push(...SIZE_NORMAL)
 
-  // ── Cabeçalho ──
+  // ── Cabeçalho (SIZE_HIGH, bold, centralizado) ──
   b.push(ESC, 0x61, 0x01)
   b.push(...SIZE_HIGH)
+  b.push(...BOLD_ON)
   if (nomeLoja) b.push(...centrar(nomeLoja.toUpperCase(), COLS_H))
 
   const canalLabel = {
@@ -114,29 +142,36 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(...centrar(`#${shortId.toUpperCase()}`, COLS_H))
 
   b.push(...SIZE_NORMAL)
+  b.push(...BOLD_OFF)
   b.push(...centrar(`${pedido.data || ''} ${pedido.hora || ''}`.trim(), COLS_N))
   b.push(ESC, 0x61, 0x00)
-  b.push(...separador('=', COLS_N))
+  b.push(LF)
+
+  // ── Separador (sempre SIZE_NORMAL) ──
+  b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('='.repeat(COLS_N)), LF)
 
   // ── Cliente e endereço ──
-  if (clienteNome)     b.push(...linha(`Cliente: ${clienteNome}`, COLS_N))
-  if (clienteTelefone) b.push(...linha(`Tel: ${clienteTelefone}`, COLS_N))
+  if (clienteNome)     b.push(...linhaLV('Cliente: ', clienteNome, COLS_N))
+  if (clienteTelefone) b.push(...linhaLV('Tel: ', clienteTelefone, COLS_N))
 
   if (enderecoEntrega) {
-    b.push(...separador('-', COLS_N))
+    b.push(LF)
+    b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
     if (enderecoEntrega === 'Retirada no local') {
-      b.push(...linha('RETIRADA NO LOCAL', COLS_N))
+      b.push(...linhaN('RETIRADA NO LOCAL', COLS_N))
     } else {
-      b.push(...linha('ENTREGA:', COLS_N))
+      b.push(...linhaN('ENTREGA:', COLS_N))
       const end = semAcento(enderecoEntrega)
       for (let i = 0; i < end.length; i += COLS_N)
-        b.push(...linha(end.slice(i, i + COLS_N), COLS_N))
+        b.push(...linhaL(end.slice(i, i + COLS_N), COLS_N))
     }
   }
 
   // ── Itens ──
-  b.push(...separador('-', COLS_N))
-  b.push(...linha('ITENS:', COLS_N))
+  b.push(LF)
+  b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
+  b.push(...linhaN('ITENS:', COLS_N))
+  b.push(LF)
 
   let totalItens = 0
   for (const item of parseArr(pedido.itens)) {
@@ -153,37 +188,35 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
       ? nome.replace(new RegExp(`\\s*\\(${tamanhoNome}\\)\\s*$`, 'i'), '').trim()
       : nome
 
-    // ── Nome do produto ──
-    // Se tem grupos de sabores, mostra o nome do produto sem os sabores inline
     const temGruposSabores = gruposEscolhidos.length > 0
     let nomeExibir
     if (variacoes.length === 1 && !temGruposSabores) nomeExibir = cleanV(variacoes[0].nome)
     else if (variacoes.length > 1 && !temGruposSabores) nomeExibir = tamanhoNome ? `${nomeRaw.split(' (')[0]} (${tamanhoNome})` : nomeRaw.split(' (')[0]
     else nomeExibir = nomeRaw
 
-    // ── Nome do produto (sem preço ainda — preço vai depois das opções) ──
-    b.push(...linha(`${qtd}x ${nomeExibir}`, COLS_N))
+    // Nome do produto em negrito
+    b.push(...linhaN(`${qtd}x ${nomeExibir}`, COLS_N))
 
-    // ── Sabores simples (variacoes sem grupos de sabores) ──
+    // Sabores simples
     if (variacoes.length > 1 && !temGruposSabores) {
       const frac = variacoes.length === 2 ? '1/2' : '1/3'
-      for (const v of variacoes) b.push(...linha(`  ${frac} ${cleanV(v.nome)}`, COLS_N))
+      for (const v of variacoes) b.push(...linhaL(`  ${frac} ${cleanV(v.nome)}`, COLS_N))
     }
 
-    // ── Grupos de sabores (gruposEscolhidos) ──
+    // Grupos de sabores — label bold, valores normais
     for (const grupo of gruposEscolhidos) {
       if (!grupo?.titulo) continue
       const vars = parseArr(grupo.variacoes)
       if (!vars.length) continue
-      b.push(...linha(`  ${grupo.titulo}:`, COLS_N))
+      b.push(...linhaN(`  ${grupo.titulo}:`, COLS_N))
       for (const v of vars) {
         const nomeV = v.nome || ''
         const qtdV  = v.quantidade || v.qtd || 1
-        b.push(...linha(`    ${qtdV > 1 ? qtdV + 'x ' : ''}${nomeV}`, COLS_N))
+        b.push(...linhaL(`    ${qtdV > 1 ? qtdV + 'x ' : ''}${nomeV}`, COLS_N))
       }
     }
 
-    // ── Opções agrupadas por grupoNome ──
+    // Opções agrupadas por grupoNome — label bold, itens normais
     const opcoes = parseArr(item.opcoes)
     if (opcoes.length > 0) {
       const grupos = []
@@ -195,66 +228,76 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
         grupos[mapaIdx[chave]].itens.push(op)
       }
       for (const g of grupos) {
-        if (g.nome) b.push(...linha(`  ${g.nome}:`, COLS_N))
+        if (g.nome) b.push(...linhaN(`  ${g.nome}:`, COLS_N))
         for (const op of g.itens)
-          b.push(...linha(`    ${op.qtd > 1 ? op.qtd + 'x ' : ''}${op.nome}`, COLS_N))
+          b.push(...linhaL(`    ${op.qtd > 1 ? op.qtd + 'x ' : ''}${op.nome}`, COLS_N))
       }
     }
 
-    // ── Borda ──
+    // Borda — label bold, valor normal
     if (item.borda) {
-      b.push(...linha(`  Borda:`, COLS_N))
-      b.push(...linha(`    ${item.borda.nome}`, COLS_N))
+      b.push(...linhaN(`  Borda:`, COLS_N))
+      b.push(...linhaL(`    ${item.borda.nome}`, COLS_N))
     }
 
-    // ── Complementos ──
+    // Complementos — label bold, itens normais
     const comps = parseArr(item.complementosEscolhidos)
     if (comps.length > 0) {
-      b.push(...linha(`  Complementos:`, COLS_N))
-      for (const c of comps) if (c?.nome) b.push(...linha(`    ${c.qtd > 1 ? c.qtd + 'x ' : ''}${c.nome}`, COLS_N))
+      b.push(...linhaN(`  Complementos:`, COLS_N))
+      for (const c of comps) if (c?.nome) b.push(...linhaL(`    ${c.qtd > 1 ? c.qtd + 'x ' : ''}${c.nome}`, COLS_N))
     }
 
-    // ── Adicionais ──
+    // Adicionais — label bold, itens normais
     const adics = parseArr(item.adicionaisEscolhidos)
     if (adics.length > 0) {
-      b.push(...linha(`  Adicionais:`, COLS_N))
-      for (const a of adics) if (a?.nome) b.push(...linha(`    ${a.qtd > 1 ? a.qtd + 'x ' : ''}${a.nome}`, COLS_N))
+      b.push(...linhaN(`  Adicionais:`, COLS_N))
+      for (const a of adics) if (a?.nome) b.push(...linhaL(`    ${a.qtd > 1 ? a.qtd + 'x ' : ''}${a.nome}`, COLS_N))
     }
 
-    if (item.obs) b.push(...linha(`  Obs: ${item.obs}`, COLS_N))
+    // Obs do item — "Obs:" bold, texto normal
+    if (item.obs) b.push(...linhaLV('  Obs: ', semAcento(String(item.obs)), COLS_N))
 
-    // ── Preço em baixo (após todas as opções) + linha em branco separando itens ──
-    if (!semPreco) b.push(...duasColunas('', `R$${preco.toFixed(2)}`, COLS_N))
+    // Preço em baixo alinhado à direita (só via completa)
+    if (!semPreco) {
+      b.push(...BOLD_OFF, ...duasColunas('', `R$${preco.toFixed(2)}`, COLS_N))
+    }
+
     b.push(LF)  // linha em branco entre itens
   }
 
   // ── Totais (só na via completa) ──
-  b.push(...separador('=', COLS_N))
+  b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('='.repeat(COLS_N)), LF)
+  b.push(LF)
+
   if (!semPreco) {
     if (plataformaTaxa > 0) {
-      b.push(...duasColunas('Taxa de entrega:', `R$${plataformaTaxa.toFixed(2)}`, COLS_N))
+      b.push(...duasColB('Taxa de entrega:', `R$${plataformaTaxa.toFixed(2)}`, COLS_N))
+      b.push(LF)
     }
     const total = totalItens + plataformaTaxa
-    b.push(...SIZE_HIGH)
-    b.push(...duasColunas('TOTAL:', `R$${total.toFixed(2)}`, COLS_H))
-    b.push(...SIZE_NORMAL)
-    if (formaPagamento) b.push(...linha(`Pgto: ${labelPgto[formaPagamento] || formaPagamento}`, COLS_N))
+    b.push(...duasColB('TOTAL:', `R$${total.toFixed(2)}`, COLS_N))
+    b.push(LF)
+    if (formaPagamento) b.push(...linhaLV('Pgto: ', labelPgto[formaPagamento] || formaPagamento, COLS_N))
     if (pedido.obs) {
       const obs = semAcento(String(pedido.obs))
-      for (let i = 0; i < obs.length; i += COLS_N)
-        b.push(...linha((i === 0 ? 'Obs: ' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
+      b.push(...BOLD_ON, ...toBytes('Obs: '), ...BOLD_OFF)
+      for (let i = 0; i < obs.length; i += COLS_N - 5)
+        b.push(...linhaL((i === 0 ? '' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
     }
-    b.push(...separador('=', COLS_N))
+    b.push(LF)
+    b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('='.repeat(COLS_N)), LF)
+    b.push(LF)
     b.push(ESC, 0x61, 0x01)
-    b.push(...centrar('Obrigado!', COLS_N))
+    b.push(...linhaN('Obrigado!', COLS_N))
     b.push(ESC, 0x61, 0x00)
   } else {
-    // Via cozinha: mostra obs se tiver
     if (pedido.obs) {
       const obs = semAcento(String(pedido.obs))
-      for (let i = 0; i < obs.length; i += COLS_N)
-        b.push(...linha((i === 0 ? 'Obs: ' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
-      b.push(...separador('=', COLS_N))
+      b.push(...BOLD_ON, ...toBytes('Obs: '), ...BOLD_OFF)
+      for (let i = 0; i < obs.length; i += COLS_N - 5)
+        b.push(...linhaL((i === 0 ? '' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
+      b.push(LF)
+      b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('='.repeat(COLS_N)), LF)
     }
   }
 
