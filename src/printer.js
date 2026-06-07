@@ -301,7 +301,8 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     }
   }
 
-  b.push(LF, LF, LF, LF, LF, LF)
+  b.push(LF, LF, LF, LF, LF, LF)  // avança além da barra de rasgo
+  b.push(GS, 0x56, 0x42, 0x00)     // GS V 66 0 — corte parcial ESC/POS
 
   return Buffer.from(b)
 }
