@@ -126,11 +126,11 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(...BOLD_OFF)
   b.push(...SIZE_NORMAL)
 
-  // ── Cabeçalho (SIZE_HIGH, bold, centralizado) ──
+  // ── Cabeçalho (SIZE_NORMAL + bold, centralizado) ──
   b.push(ESC, 0x61, 0x01)
-  b.push(...SIZE_HIGH)
+  b.push(...SIZE_NORMAL)
   b.push(...BOLD_ON)
-  if (nomeLoja) b.push(...centrar(nomeLoja.toUpperCase(), COLS_H))
+  if (nomeLoja) b.push(...centrar(nomeLoja.toUpperCase(), COLS_N))
 
   const canalLabel = {
     ifood: 'iFOOD', ifood2: 'iFOOD 2', '99food': '99FOOD',
@@ -138,8 +138,8 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   }
   const canal   = canalLabel[pedido.canal] || (pedido.canal || 'PEDIDO').toUpperCase()
   const shortId = pedido.ifood_short_id || pedido.ifoodShortId || (pedido.id || '----').replace(/_coz$/, '').slice(-6)
-  b.push(...centrar(canal, COLS_H))
-  b.push(...centrar(`#${shortId.toUpperCase()}`, COLS_H))
+  b.push(...centrar(canal, COLS_N))
+  b.push(...centrar(`#${shortId.toUpperCase()}`, COLS_N))
 
   b.push(...SIZE_NORMAL)
   b.push(...BOLD_OFF)
