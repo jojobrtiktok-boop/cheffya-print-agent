@@ -150,6 +150,17 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   // ── Separador (sempre SIZE_NORMAL) ──
   b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('='.repeat(COLS_N)), LF)
 
+  // ── Mesa ──
+  const nomeMesa = pedido.nomeMesa || pedido.nome_mesa
+  if (nomeMesa) {
+    b.push(...SIZE_HIGH, ...BOLD_ON)
+    b.push(ESC, 0x61, 0x01) // centralizado
+    b.push(...centrar(`MESA: ${nomeMesa.toUpperCase()}`, COLS_H))
+    b.push(ESC, 0x61, 0x00)
+    b.push(...SIZE_NORMAL, ...BOLD_OFF)
+    b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
+  }
+
   // ── Cliente e endereço ──
   if (clienteNome)     b.push(...linhaLV('Cliente: ', clienteNome, COLS_N))
   if (clienteTelefone) b.push(...linhaLV('Tel: ', clienteTelefone, COLS_N))
