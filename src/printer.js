@@ -146,34 +146,29 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(...centrar(`${pedido.data || ''} ${pedido.hora || ''}`.trim(), COLS_N))
   b.push(ESC, 0x61, 0x00)
   b.push(LF)
-
-  // ── Separador (sempre SIZE_NORMAL) ──
-  b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('='.repeat(COLS_N)), LF)
+  b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
 
   // ── Mesa ──
   const nomeMesa = pedido.nomeMesa || pedido.nome_mesa
   if (nomeMesa) {
-    b.push(...SIZE_HIGH, ...BOLD_ON)
-    b.push(ESC, 0x61, 0x01) // centralizado
-    b.push(...centrar(`MESA: ${nomeMesa.toUpperCase()}`, COLS_H))
+    b.push(ESC, 0x61, 0x01)
+    b.push(...BOLD_ON, ...toBytes(`MESA: ${nomeMesa.toUpperCase()}`), LF, ...BOLD_OFF)
     b.push(ESC, 0x61, 0x00)
-    b.push(...SIZE_NORMAL, ...BOLD_OFF)
     b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
   }
 
-  // ── Cliente e endereço ──
+  // ── Cliente + Endereço (juntos, sem separador entre eles) ──
   if (clienteNome)     b.push(...linhaLV('Cliente: ', clienteNome, COLS_N))
   if (clienteTelefone) b.push(...linhaLV('Tel: ', clienteTelefone, COLS_N))
-
   if (enderecoEntrega) {
-    b.push(LF)
-    b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
     if (enderecoEntrega === 'Retirada no local') {
-      b.push(...linhaN('RETIRADA NO LOCAL', COLS_N))
+      b.push(...linhaN('Retirada no local', COLS_N))
     } else {
-      b.push(...linhaN('ENTREGA:', COLS_N))
+      // Label "Entrega:" bold + primeira parte do endereço na mesma linha
       const end = semAcento(enderecoEntrega)
-      for (let i = 0; i < end.length; i += COLS_N)
+      const maxFirst = COLS_N - 9
+      b.push(...BOLD_ON, ...toBytes('Entrega: '), ...BOLD_OFF, ...toBytes(end.slice(0, maxFirst)), LF)
+      for (let i = maxFirst; i < end.length; i += COLS_N)
         b.push(...linhaL(end.slice(i, i + COLS_N), COLS_N))
     }
   }
@@ -205,8 +200,9 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     else if (variacoes.length > 1 && !temGruposSabores) nomeExibir = tamanhoNome ? `${nomeRaw.split(' (')[0]} (${tamanhoNome})` : nomeRaw.split(' (')[0]
     else nomeExibir = nomeRaw
 
-    // Nome do produto em negrito
-    b.push(...linhaN(`${qtd}x ${nomeExibir}`, COLS_N))
+    // Nome + preço na mesma linha (negrito)
+    const precoStr = !semPreco ? `R$${preco.toFixed(2)}` : ''
+    b.push(...BOLD_ON, ...duasColB(`${qtd}x ${nomeExibir}`, precoStr, COLS_N), ...BOLD_OFF)
 
     // Sabores simples
     if (variacoes.length > 1 && !temGruposSabores) {
@@ -214,7 +210,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
       for (const v of variacoes) b.push(...linhaL(`  ${frac} ${cleanV(v.nome)}`, COLS_N))
     }
 
-    // Grupos de sabores — label bold, valores normais
+    // Grupos de sabores — label bold, cada variação em linha separada
     for (const grupo of gruposEscolhidos) {
       if (!grupo?.titulo) continue
       const vars = parseArr(grupo.variacoes)
@@ -245,39 +241,34 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
       }
     }
 
-    // Borda — label bold, valor normal
+    // Borda
     if (item.borda) {
       b.push(...linhaN(`  Borda:`, COLS_N))
       b.push(...linhaL(`    ${item.borda.nome}`, COLS_N))
     }
 
-    // Complementos — label bold, itens normais
+    // Complementos
     const comps = parseArr(item.complementosEscolhidos)
     if (comps.length > 0) {
       b.push(...linhaN(`  Complementos:`, COLS_N))
       for (const c of comps) if (c?.nome) b.push(...linhaL(`    ${c.qtd > 1 ? c.qtd + 'x ' : ''}${c.nome}`, COLS_N))
     }
 
-    // Adicionais — label bold, itens normais
+    // Adicionais
     const adics = parseArr(item.adicionaisEscolhidos)
     if (adics.length > 0) {
       b.push(...linhaN(`  Adicionais:`, COLS_N))
       for (const a of adics) if (a?.nome) b.push(...linhaL(`    ${a.qtd > 1 ? a.qtd + 'x ' : ''}${a.nome}`, COLS_N))
     }
 
-    // Obs do item — "Obs:" bold, texto normal
+    // Obs do item
     if (item.obs) b.push(...linhaLV('  Obs: ', semAcento(String(item.obs)), COLS_N))
-
-    // Preço em negrito logo abaixo (só via completa)
-    if (!semPreco) {
-      b.push(...linhaN(`R$${preco.toFixed(2)}`, COLS_N))
-    }
 
     b.push(LF)  // linha em branco entre itens
   }
 
   // ── Totais (só na via completa) ──
-  b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('='.repeat(COLS_N)), LF)
+  b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
   b.push(LF)
 
   if (!semPreco) {
@@ -288,7 +279,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     const total = totalItens + plataformaTaxa
     b.push(...duasColB('TOTAL:', `R$${total.toFixed(2)}`, COLS_N))
     b.push(LF)
-    if (formaPagamento) b.push(...linhaLV('Pgto: ', labelPgto[formaPagamento] || formaPagamento, COLS_N))
+    if (formaPagamento) b.push(...linhaLV('Pagamento: ', labelPgto[formaPagamento] || formaPagamento, COLS_N))
     if (pedido.obs) {
       const obs = semAcento(String(pedido.obs))
       b.push(...BOLD_ON, ...toBytes('Obs: '), ...BOLD_OFF)
@@ -296,7 +287,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
         b.push(...linhaL((i === 0 ? '' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
     }
     b.push(LF)
-    b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('='.repeat(COLS_N)), LF)
+    b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
     b.push(LF)
     b.push(ESC, 0x61, 0x01)
     b.push(...linhaN('Obrigado!', COLS_N))
@@ -308,7 +299,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
       for (let i = 0; i < obs.length; i += COLS_N - 5)
         b.push(...linhaL((i === 0 ? '' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
       b.push(LF)
-      b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('='.repeat(COLS_N)), LF)
+      b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
     }
   }
 
