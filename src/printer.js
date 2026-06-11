@@ -269,7 +269,6 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
 
   // ── Totais (só na via completa) ──
   b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
-  b.push(LF)
 
   if (!semPreco) {
     if (plataformaTaxa > 0) {
@@ -286,11 +285,9 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
       for (let i = 0; i < obs.length; i += COLS_N - 5)
         b.push(...linhaL((i === 0 ? '' : '     ') + obs.slice(i, i + COLS_N - 5), COLS_N))
     }
-    b.push(LF)
     b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
-    b.push(LF)
     b.push(ESC, 0x61, 0x01)
-    b.push(...linhaN('Obrigado!', COLS_N))
+    b.push(...linhaL('Sistema Cheffya - www.cheffya.com.br', COLS_N))
     b.push(ESC, 0x61, 0x00)
   } else {
     if (pedido.obs) {
