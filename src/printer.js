@@ -190,15 +190,18 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     const variacoes        = parseArr(item.variacoes)
     const gruposEscolhidos = parseArr(item.gruposEscolhidos)
     const tamanhoNome      = item.tamanho?.nome || ''
-    const cleanV = (nome) => tamanhoNome
-      ? nome.replace(new RegExp(`\\s*\\(${tamanhoNome}\\)\\s*$`, 'i'), '').trim()
-      : nome
+    // Remove sufixo de tamanho: "(m)", "(g)", "(gg)", "(p)" etc. do final do nome
+    const cleanV = (nome) => {
+      if (!nome) return nome
+      if (tamanhoNome) return nome.replace(new RegExp(`\\s*\\(${tamanhoNome}\\)\\s*$`, 'i'), '').trim()
+      return nome.replace(/\s*\([a-zA-Z]{1,3}\)\s*$/, '').trim() || nome
+    }
 
     const temGruposSabores = gruposEscolhidos.length > 0
     let nomeExibir
     if (variacoes.length === 1 && !temGruposSabores) nomeExibir = cleanV(variacoes[0].nome)
-    else if (variacoes.length > 1 && !temGruposSabores) nomeExibir = tamanhoNome ? `${nomeRaw.split(' (')[0]} (${tamanhoNome})` : nomeRaw.split(' (')[0]
-    else nomeExibir = nomeRaw
+    else if (variacoes.length > 1 && !temGruposSabores) nomeExibir = cleanV(nomeRaw.split(' (')[0]) || nomeRaw.split(' (')[0]
+    else nomeExibir = cleanV(nomeRaw)
 
     // Nome + preço na mesma linha (negrito)
     const precoStr = !semPreco ? `R$${preco.toFixed(2)}` : ''
