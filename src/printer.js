@@ -287,7 +287,8 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     }
     b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
     b.push(ESC, 0x61, 0x01)
-    b.push(...linhaL('Sistema Cheffya - www.cheffya.com.br', COLS_N))
+    b.push(...linhaL('Sistema Cheffya', COLS_N))
+    b.push(...linhaL('www.cheffya.com.br', COLS_N))
     b.push(ESC, 0x61, 0x00)
   } else {
     if (pedido.obs) {
