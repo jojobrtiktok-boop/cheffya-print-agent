@@ -220,7 +220,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
       if (!vars.length) continue
       b.push(...linhaN(`  ${grupo.titulo}:`, COLS_N))
       for (const v of vars) {
-        const nomeV = v.nome || ''
+        const nomeV = cleanV(v.nome || '')
         const qtdV  = v.quantidade || v.qtd || 1
         b.push(...linhaL(`    ${qtdV > 1 ? qtdV + 'x ' : ''}${nomeV}`, COLS_N))
       }
