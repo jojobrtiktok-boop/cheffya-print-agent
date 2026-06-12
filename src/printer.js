@@ -267,7 +267,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     // Obs do item
     if (item.obs) b.push(...linhaLV('  Obs: ', semAcento(String(item.obs)), COLS_N))
 
-    b.push(LF)  // linha em branco entre itens
+    b.push(ESC, 0x4A, 12)  // ESC J 12 — avanço de meia linha entre itens (metade do LF normal)
   }
 
   // ── Totais (só na via completa) ──
