@@ -195,7 +195,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     // Remove sufixo entre parênteses do final do nome: "(m)", "(g)", "(média)", "(2L)" etc.
     const cleanV = (nome) => {
       if (!nome) return nome
-      return nome.replace(/\s*\([^)]*\)\s*$/, '').trim() || nome
+      return nome.replace(/\s*\(.*\)\s*$/, '').trim() || nome
     }
 
     const temGruposSabores = gruposEscolhidos.length > 0
@@ -255,14 +255,14 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     const comps = parseArr(item.complementosEscolhidos)
     if (comps.length > 0) {
       b.push(...linhaN(`  Complementos:`, COLS_N))
-      for (const c of comps) if (c?.nome) b.push(...linhaL(`    ${c.qtd > 1 ? c.qtd + 'x ' : ''}${c.nome}`, COLS_N))
+      for (const c of comps) if (c?.nome) b.push(...linhaL(`    ${c.qtd > 1 ? c.qtd + 'x ' : ''}${cleanV(c.nome)}`, COLS_N))
     }
 
     // Adicionais
     const adics = parseArr(item.adicionaisEscolhidos)
     if (adics.length > 0) {
       b.push(...linhaN(`  Adicionais:`, COLS_N))
-      for (const a of adics) if (a?.nome) b.push(...linhaL(`    ${a.qtd > 1 ? a.qtd + 'x ' : ''}${a.nome}`, COLS_N))
+      for (const a of adics) if (a?.nome) b.push(...linhaL(`    ${a.qtd > 1 ? a.qtd + 'x ' : ''}${cleanV(a.nome)}`, COLS_N))
     }
 
     // Obs do item
