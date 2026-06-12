@@ -175,10 +175,14 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   }
 
   // ── Itens ──
-  b.push(LF)
-  b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
+  // Só repete o separador se houve bloco de cliente/endereço — sem ele, o separador
+  // do cabeçalho já está logo acima (evita dois traços com linha em branco no meio)
+  if (clienteNome || clienteTelefone || enderecoEntrega) {
+    b.push(ESC, 0x4A, 6)
+    b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
+  }
   b.push(...linhaN('ITENS:', COLS_N))
-  b.push(LF)
+  b.push(ESC, 0x4A, 8)
 
   let totalItens = 0
   for (const item of parseArr(pedido.itens)) {
