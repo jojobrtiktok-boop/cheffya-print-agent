@@ -241,7 +241,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
       for (const g of grupos) {
         if (g.nome) b.push(...linhaN(`  ${g.nome}:`, COLS_N))
         for (const op of g.itens)
-          b.push(...linhaL(`    ${op.qtd > 1 ? op.qtd + 'x ' : ''}${op.nome}`, COLS_N))
+          b.push(...linhaL(`    ${op.qtd > 1 ? op.qtd + 'x ' : ''}${cleanV(op.nome)}`, COLS_N))
       }
     }
 
