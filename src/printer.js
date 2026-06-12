@@ -125,6 +125,8 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(ESC, 0x40)
   b.push(...BOLD_OFF)
   b.push(...SIZE_NORMAL)
+  // Double-strike: imprime cada caractere 2x — letras mais escuras sem engrossar como o bold
+  b.push(ESC, 0x47, 0x01)
 
   // ── Cabeçalho (SIZE_NORMAL + bold, centralizado) ──
   b.push(ESC, 0x61, 0x01)
@@ -190,11 +192,10 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     const variacoes        = parseArr(item.variacoes)
     const gruposEscolhidos = parseArr(item.gruposEscolhidos)
     const tamanhoNome      = item.tamanho?.nome || ''
-    // Remove sufixo de tamanho: "(m)", "(g)", "(gg)", "(p)" etc. do final do nome
+    // Remove sufixo entre parênteses do final do nome: "(m)", "(g)", "(média)", "(2L)" etc.
     const cleanV = (nome) => {
       if (!nome) return nome
-      if (tamanhoNome) return nome.replace(new RegExp(`\\s*\\(${tamanhoNome}\\)\\s*$`, 'i'), '').trim()
-      return nome.replace(/\s*\([a-zA-Z]{1,3}\)\s*$/, '').trim() || nome
+      return nome.replace(/\s*\([^)]*\)\s*$/, '').trim() || nome
     }
 
     const temGruposSabores = gruposEscolhidos.length > 0
