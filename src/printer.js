@@ -125,14 +125,13 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(ESC, 0x40)
   b.push(...BOLD_OFF)
   b.push(...SIZE_NORMAL)
-  // Double-strike: imprime cada caractere 2x — letras mais escuras sem engrossar como o bold
-  b.push(ESC, 0x47, 0x01)
 
-  // ── Cabeçalho (SIZE_NORMAL + bold, centralizado) ──
+  // ── Cabeçalho (SIZE_NORMAL + bold, centralizado pelo ESC — sem padding manual,
+  //    senão o texto é centralizado duas vezes e sai deslocado) ──
   b.push(ESC, 0x61, 0x01)
   b.push(...SIZE_NORMAL)
   b.push(...BOLD_ON)
-  if (nomeLoja) b.push(...centrar(nomeLoja.toUpperCase(), COLS_N))
+  if (nomeLoja) b.push(...toBytes(nomeLoja.toUpperCase().slice(0, COLS_N)), LF)
 
   const canalLabel = {
     ifood: 'iFOOD', ifood2: 'iFOOD 2', '99food': '99FOOD',
@@ -140,12 +139,12 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   }
   const canal   = canalLabel[pedido.canal] || (pedido.canal || 'PEDIDO').toUpperCase()
   const shortId = pedido.ifood_short_id || pedido.ifoodShortId || (pedido.id || '----').replace(/_coz$/, '').slice(-6)
-  b.push(...centrar(canal, COLS_N))
-  b.push(...centrar(`#${shortId.toUpperCase()}`, COLS_N))
+  b.push(...toBytes(canal.slice(0, COLS_N)), LF)
+  b.push(...toBytes(`#${shortId.toUpperCase()}`.slice(0, COLS_N)), LF)
 
   b.push(...SIZE_NORMAL)
   b.push(...BOLD_OFF)
-  b.push(...centrar(`${pedido.data || ''} ${pedido.hora || ''}`.trim(), COLS_N))
+  b.push(...toBytes(`${pedido.data || ''} ${pedido.hora || ''}`.trim().slice(0, COLS_N)), LF)
   b.push(ESC, 0x61, 0x00)
   b.push(LF)
   b.push(...SIZE_NORMAL, ...BOLD_OFF, ...toBytes('-'.repeat(COLS_N)), LF)
