@@ -276,11 +276,11 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   if (!semPreco) {
     if (plataformaTaxa > 0) {
       b.push(...duasColB('Taxa de entrega:', `R$${plataformaTaxa.toFixed(2)}`, COLS_N))
-      b.push(LF)
+      b.push(ESC, 0x4A, 6)   // espaço mínimo
     }
     const total = totalItens + plataformaTaxa
     b.push(...duasColB('TOTAL:', `R$${total.toFixed(2)}`, COLS_N))
-    b.push(LF)
+    b.push(ESC, 0x4A, 8)     // espaço pequeno entre total e pagamento
     if (formaPagamento) b.push(...linhaLV('Pagamento: ', labelPgto[formaPagamento] || formaPagamento, COLS_N))
     if (pedido.obs) {
       const obs = semAcento(String(pedido.obs))
@@ -306,7 +306,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     }
   }
 
-  b.push(LF, LF, LF, LF, LF, LF)  // avança além da barra de rasgo
+  b.push(LF, LF, LF)               // avanço até a barra de corte (reduzido)
   b.push(GS, 0x56, 0x42, 0x00)     // GS V 66 0 — corte parcial ESC/POS
 
   return Buffer.from(b)
