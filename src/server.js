@@ -146,7 +146,9 @@ function criarServidor() {
     if (!cfg.porta) return res.status(400).json({ ok: false, erro: 'Nenhuma porta COM configurada.' })
 
     try {
-      await testar(cfg.porta)
+      const { forte, larguraPapel: larguraReq } = req.body || {}
+      const largura = Number(larguraReq) === 80 || Number(larguraReq) === 58 ? Number(larguraReq) : (cfg.larguraPapel || 58)
+      await testar(cfg.porta, largura, !!forte)
       res.json({ ok: true })
     } catch (e) {
       log.error(`Erro no teste: ${e.message}`)

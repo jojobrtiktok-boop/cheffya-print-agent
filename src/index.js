@@ -53,10 +53,13 @@ async function main() {
     process.exit(0)
   })
 
-  // 4. Verificar atualizações (após 5s para não atrasar o startup)
+  // 4. Verificar atualizações (após 5s para não atrasar o startup) + a cada 30min
   setTimeout(() => {
     verificarAtualizacao().catch(e => log.warn(`Update check: ${e.message}`))
   }, 5000)
+  setInterval(() => {
+    verificarAtualizacao().catch(e => log.warn(`Update check periódico: ${e.message}`))
+  }, 30 * 60 * 1000)
 
   log.info('Agente pronto. Configure a impressora pelo ícone na bandeja do sistema.')
 }

@@ -509,7 +509,7 @@ async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVi
 }
 
 // ── Testar impressora ─────────────────────────────────────────────────────────
-async function testar(dispositivo, larguraPapel = 58) {
+async function testar(dispositivo, larguraPapel = 58, forte = false) {
   const pedidoTeste = {
     id: 'TESTE01',
     canal: 'balcao',
@@ -520,9 +520,9 @@ async function testar(dispositivo, larguraPapel = 58) {
       { nome: 'Coca-Cola 2L',       quantidade: 1, precoUnit: 15.00, opcoes: [] },
     ],
     forma_pagamento: 'pix',
-    obs: `Teste ${larguraPapel}mm — ${larguraPapel === 80 ? 42 : 32} colunas`,
+    obs: `Teste ${larguraPapel}mm — ${larguraPapel === 80 ? 42 : 32} colunas${forte ? ' — FORTE' : ''}`,
   }
-  await imprimir(pedidoTeste, 'CHEFFYA', dispositivo, larguraPapel)
+  await imprimir(pedidoTeste, 'CHEFFYA', dispositivo, larguraPapel, 'completo', forte)
 }
 
 module.exports = { imprimir, testar, listarPortas, verificarPorta, montarEscPos }
