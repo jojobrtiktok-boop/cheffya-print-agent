@@ -80,10 +80,13 @@ function parseArr(v) {
 
 // ── Montar bytes ESC/POS ──────────────────────────────────────────────────────
 // ── Helpers de negrito ────────────────────────────────────────────────────────
-const BOLD_ON  = [ESC, 0x45, 0x01]
-const BOLD_OFF = [ESC, 0x45, 0x00]
-// Double-strike: imprime cada ponto duas vezes → impressão mais forte/escura.
-// Independente do BOLD (ESC E), então permanece ativo mesmo com bold on/off.
+const BOLD_ON      = [ESC, 0x45, 0x01]
+const BOLD_OFF_REAL = [ESC, 0x45, 0x00]
+// BOLD_OFF é mutável: no modo "forte" vira [] (vazio), então o "desliga negrito"
+// não faz nada e TODO o texto sai em negrito (forma mais eficaz de escurecer em
+// impressora térmica — double-strike sozinho costuma não ter efeito visível).
+let BOLD_OFF = BOLD_OFF_REAL
+// Double-strike: reforço extra (em térmica o efeito principal vem do negrito).
 const DOUBLE_STRIKE_ON = [ESC, 0x47, 0x01]
 
 // Linha em negrito
@@ -124,12 +127,16 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     cartaoDebito: 'Debito', cartao: 'Cartao', pixWhatsapp: 'PIX WPP',
   }
 
+  // Modo "forte": negrito permanente (BOLD_OFF vira no-op) + double-strike de reforço
+  BOLD_OFF = forte ? [] : BOLD_OFF_REAL
   // Init: reset, bold off, tamanho normal
   b.push(ESC, 0x40)
-  b.push(...BOLD_OFF)
+  b.push(...BOLD_OFF_REAL)
   b.push(...SIZE_NORMAL)
-  // Impressão mais forte: liga double-strike global (escurece tudo)
-  if (forte) b.push(...DOUBLE_STRIKE_ON)
+  if (forte) {
+    b.push(...DOUBLE_STRIKE_ON)
+    b.push(...BOLD_ON)   // garante negrito desde o início
+  }
 
   // ── Cabeçalho (SIZE_NORMAL + bold, centralizado pelo ESC — sem padding manual,
   //    senão o texto é centralizado duas vezes e sai deslocado) ──
