@@ -136,6 +136,11 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   if (forte) {
     b.push(...DOUBLE_STRIKE_ON)
     b.push(...BOLD_ON)   // garante negrito desde o início
+    // Densidade/aquecimento máximos — é o que realmente escurece em térmica.
+    // ESC 7 n1 n2 n3: max dots, heating time (alto=escuro), heating interval (baixo=escuro)
+    b.push(ESC, 0x37, 7, 0xC8, 2)
+    // GS ( L / densidade via DC2: reforço para printers que suportam DC2 # n
+    b.push(0x12, 0x23, 0x0F)
   }
 
   // ── Cabeçalho (SIZE_NORMAL + bold, centralizado pelo ESC — sem padding manual,
@@ -510,6 +515,8 @@ async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVi
 
 // ── Testar impressora ─────────────────────────────────────────────────────────
 async function testar(dispositivo, larguraPapel = 58, forte = false) {
+  let versao = '?'
+  try { versao = require('../package.json').version } catch {}
   const pedidoTeste = {
     id: 'TESTE01',
     canal: 'balcao',
@@ -520,7 +527,7 @@ async function testar(dispositivo, larguraPapel = 58, forte = false) {
       { nome: 'Coca-Cola 2L',       quantidade: 1, precoUnit: 15.00, opcoes: [] },
     ],
     forma_pagamento: 'pix',
-    obs: `Teste ${larguraPapel}mm — ${larguraPapel === 80 ? 42 : 32} colunas${forte ? ' — FORTE' : ''}`,
+    obs: `Agente v${versao} | ${larguraPapel}mm | ${forte ? 'FORTE: SIM' : 'forte: nao'}`,
   }
   await imprimir(pedidoTeste, 'CHEFFYA', dispositivo, larguraPapel, 'completo', forte)
 }
