@@ -82,6 +82,9 @@ function parseArr(v) {
 // ── Helpers de negrito ────────────────────────────────────────────────────────
 const BOLD_ON  = [ESC, 0x45, 0x01]
 const BOLD_OFF = [ESC, 0x45, 0x00]
+// Double-strike: imprime cada ponto duas vezes → impressão mais forte/escura.
+// Independente do BOLD (ESC E), então permanece ativo mesmo com bold on/off.
+const DOUBLE_STRIKE_ON = [ESC, 0x47, 0x01]
 
 // Linha em negrito
 function linhaN(txt, cols) {
@@ -106,7 +109,7 @@ function linhaLV(label, valor, cols) {
 }
 
 // modoVia: 'completo' (com preços) | 'cozinha' (sem preços, sem total)
-function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'completo') {
+function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'completo', forte = false) {
   const b = []
   const { N: COLS_N, H: COLS_H } = getCols(larguraPapel)
   const semPreco = modoVia === 'cozinha'
@@ -125,6 +128,8 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(ESC, 0x40)
   b.push(...BOLD_OFF)
   b.push(...SIZE_NORMAL)
+  // Impressão mais forte: liga double-strike global (escurece tudo)
+  if (forte) b.push(...DOUBLE_STRIKE_ON)
 
   // ── Cabeçalho (SIZE_NORMAL + bold, centralizado pelo ESC — sem padding manual,
   //    senão o texto é centralizado duas vezes e sai deslocado) ──
@@ -484,9 +489,9 @@ catch { Write-Host "ERRO:$($_.Exception.Message)" }
 }
 
 // ── Imprimir pedido ───────────────────────────────────────────────────────────
-async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVia = 'completo') {
+async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVia = 'completo', forte = false) {
   if (!dispositivo) throw new Error('Nenhum dispositivo configurado. Configure em Alterar porta / impressora.')
-  const dados = montarEscPos(pedido, nomeLoja, larguraPapel, modoVia)
+  const dados = montarEscPos(pedido, nomeLoja, larguraPapel, modoVia, forte)
   log.info(`Imprimindo ${dados.length} bytes em "${dispositivo}" (papel ${larguraPapel}mm, via=${modoVia})`)
   if (ehPortaCOM(dispositivo)) {
     await escrevePortaCOM(dispositivo, dados)
