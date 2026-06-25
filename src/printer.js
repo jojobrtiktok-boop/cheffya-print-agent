@@ -159,6 +159,13 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(...toBytes(canal.slice(0, COLS_N)), LF)
   b.push(...toBytes(`#${shortId.toUpperCase()}`.slice(0, COLS_N)), LF)
 
+  // Número sequencial do pedido (por restaurante, 0001..9999) — embaixo do código
+  const numPedido = pedido.numero_pedido ?? pedido.numeroPedido
+  if (numPedido != null && numPedido !== '') {
+    const numFmt = String(numPedido).padStart(4, '0')
+    b.push(...SIZE_DOUBLE, ...BOLD_ON, ...toBytes(`Nº ${numFmt}`.slice(0, COLS_H)), LF, ...SIZE_NORMAL)
+  }
+
   b.push(...SIZE_NORMAL)
   b.push(...BOLD_OFF)
   b.push(...toBytes(`${pedido.data || ''} ${pedido.hora || ''}`.trim().slice(0, COLS_N)), LF)
