@@ -163,7 +163,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   const numPedido = pedido.numero_pedido ?? pedido.numeroPedido
   if (numPedido != null && numPedido !== '') {
     const numFmt = String(numPedido).padStart(4, '0')
-    b.push(...SIZE_DOUBLE, ...BOLD_ON, ...toBytes(`Nº ${numFmt}`.slice(0, COLS_H)), LF, ...SIZE_NORMAL)
+    b.push(...SIZE_NORMAL, ...BOLD_ON, ...toBytes(`No ${numFmt}`.slice(0, COLS_N)), LF, ...BOLD_OFF)
   }
 
   b.push(...SIZE_NORMAL)
@@ -234,6 +234,9 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     // Nome + preço na mesma linha (negrito)
     const precoStr = !semPreco ? `R$${preco.toFixed(2)}` : ''
     b.push(...BOLD_ON, ...duasColB(`${qtd}x ${nomeExibir}`, precoStr, COLS_N), ...BOLD_OFF)
+
+    // Tamanho do produto customizável (ex: "Serve 2 pessoas") — só quando tem tamanho ativo
+    if (tamanhoNome) b.push(...linhaL(`  ${semAcento(tamanhoNome)}`, COLS_N))
 
     // Sabores simples
     if (!temGruposSabores && variacoes.length === 1 && cleanV(variacoes[0].nome) !== nomeProduto) {
