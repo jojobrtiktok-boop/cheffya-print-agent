@@ -20,9 +20,12 @@ function getCols(larguraMm) {
   return { N: 32, H: 32, D: 16 }   // padrão 58mm
 }
 
-const SIZE_NORMAL = [GS, 0x21, 0x00]
-const SIZE_HIGH   = [GS, 0x21, 0x01]
+const SIZE_NORMAL_REAL = [GS, 0x21, 0x00]
+const SIZE_HIGH   = [GS, 0x21, 0x01]   // altura dobrada (largura igual — não muda colunas)
 const SIZE_DOUBLE = [GS, 0x21, 0x11]
+// SIZE_NORMAL é mutável: no modo "letra maior" vira altura dobrada, então TODO o texto
+// (que reseta para SIZE_NORMAL) sai maior — sem quebrar o alinhamento das colunas.
+let SIZE_NORMAL = SIZE_NORMAL_REAL
 
 // ── Helpers de texto ──────────────────────────────────────────────────────────
 function semAcento(str) {
@@ -156,10 +159,12 @@ function linhaLV(label, valor, cols) {
 }
 
 // modoVia: 'completo' (com preços) | 'cozinha' (sem preços, sem total)
-function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'completo', forte = false) {
+function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'completo', forte = false, fonteGrande = false) {
   const b = []
   const { N: COLS_N, H: COLS_H } = getCols(larguraPapel)
   const semPreco = modoVia === 'cozinha'
+  // "Letra maior": o texto normal passa a ter altura dobrada
+  SIZE_NORMAL = fonteGrande ? SIZE_HIGH : SIZE_NORMAL_REAL
 
   const clienteNome     = pedido.cliente_nome     || pedido.clienteNome
   const clienteTelefone = pedido.cliente_telefone || pedido.clienteTelefone
@@ -555,9 +560,9 @@ catch { Write-Host "ERRO:$($_.Exception.Message)" }
 }
 
 // ── Imprimir pedido ───────────────────────────────────────────────────────────
-async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVia = 'completo', forte = false) {
+async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVia = 'completo', forte = false, fonteGrande = false) {
   if (!dispositivo) throw new Error('Nenhum dispositivo configurado. Configure em Alterar porta / impressora.')
-  const dados = montarEscPos(pedido, nomeLoja, larguraPapel, modoVia, forte)
+  const dados = montarEscPos(pedido, nomeLoja, larguraPapel, modoVia, forte, fonteGrande)
   log.info(`Imprimindo ${dados.length} bytes em "${dispositivo}" (papel ${larguraPapel}mm, via=${modoVia})`)
   if (ehPortaCOM(dispositivo)) {
     await escrevePortaCOM(dispositivo, dados)
@@ -568,7 +573,7 @@ async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVi
 }
 
 // ── Testar impressora ─────────────────────────────────────────────────────────
-async function testar(dispositivo, larguraPapel = 58, forte = false) {
+async function testar(dispositivo, larguraPapel = 58, forte = false, fonteGrande = false) {
   let versao = '?'
   try { versao = require('../package.json').version } catch {}
   const pedidoTeste = {
@@ -583,7 +588,7 @@ async function testar(dispositivo, larguraPapel = 58, forte = false) {
     forma_pagamento: 'pix',
     obs: `Agente v${versao} | ${larguraPapel}mm | ${forte ? 'FORTE: SIM' : 'forte: nao'}`,
   }
-  await imprimir(pedidoTeste, 'CHEFFYA', dispositivo, larguraPapel, 'completo', forte)
+  await imprimir(pedidoTeste, 'CHEFFYA', dispositivo, larguraPapel, 'completo', forte, fonteGrande)
 }
 
 module.exports = { imprimir, testar, listarPortas, verificarPorta, montarEscPos }

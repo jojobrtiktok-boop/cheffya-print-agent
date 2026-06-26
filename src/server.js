@@ -110,7 +110,7 @@ function criarServidor() {
 
   // ── POST /imprimir ────────────────────────────────────────────────────────
   app.post('/imprimir', async (req, res) => {
-    const { pedido, nomeLoja, forte, larguraPapel: larguraReq } = req.body
+    const { pedido, nomeLoja, forte, fonteGrande, larguraPapel: larguraReq } = req.body
     if (!pedido) return res.status(400).json({ ok: false, erro: 'pedido é obrigatório' })
 
     // Dedup: ignora se mesmo pedido já foi impresso nos últimos 30s
@@ -132,7 +132,7 @@ function criarServidor() {
       const modoVia = (nomeLoja || '').includes('COZINHA') ? 'cozinha' : 'completo'
       // Largura: prioriza a enviada pelo painel (sincronizada via banco) sobre a config local do agente
       const largura = Number(larguraReq) === 80 || Number(larguraReq) === 58 ? Number(larguraReq) : (cfg.larguraPapel || 58)
-      await imprimir(pedido, nomeLoja || '', cfg.porta, largura, modoVia, !!forte)
+      await imprimir(pedido, nomeLoja || '', cfg.porta, largura, modoVia, !!forte, !!fonteGrande)
       res.json({ ok: true })
     } catch (e) {
       log.error(`Erro ao imprimir: ${e.message}`)
@@ -146,9 +146,9 @@ function criarServidor() {
     if (!cfg.porta) return res.status(400).json({ ok: false, erro: 'Nenhuma porta COM configurada.' })
 
     try {
-      const { forte, larguraPapel: larguraReq } = req.body || {}
+      const { forte, fonteGrande, larguraPapel: larguraReq } = req.body || {}
       const largura = Number(larguraReq) === 80 || Number(larguraReq) === 58 ? Number(larguraReq) : (cfg.larguraPapel || 58)
-      await testar(cfg.porta, largura, !!forte)
+      await testar(cfg.porta, largura, !!forte, !!fonteGrande)
       res.json({ ok: true })
     } catch (e) {
       log.error(`Erro no teste: ${e.message}`)
