@@ -104,6 +104,50 @@ function duasColB(esq, dir, cols) {
   const esp = ' '.repeat(Math.max(1, cols - e.length - d.length))
   return [...BOLD_ON, ...toBytes(e), ...BOLD_OFF, ...toBytes(esp + d), LF]
 }
+// Nome do item (bold) + preço, sem cortar o nome: quebra em linhas por palavra.
+// O preço entra na última linha se couber; senão vai em linha própria à direita.
+function nomePreco(esq, dir, cols) {
+  const nome  = semAcento(esq || '')
+  const preco = (dir || '').toString()
+  const palavras = nome.split(' ')
+  const linhas = []
+  let atual = ''
+  for (const w of palavras) {
+    const tentativa = atual ? atual + ' ' + w : w
+    if (tentativa.length <= cols) {
+      atual = tentativa
+    } else {
+      if (atual) linhas.push(atual)
+      if (w.length > cols) {
+        let resto = w
+        while (resto.length > cols) { linhas.push(resto.slice(0, cols)); resto = resto.slice(cols) }
+        atual = resto
+      } else {
+        atual = w
+      }
+    }
+  }
+  if (atual) linhas.push(atual)
+  if (linhas.length === 0) linhas.push('')
+
+  const out = []
+  if (preco) {
+    const ultima = linhas[linhas.length - 1]
+    if (ultima.length + 1 + preco.length <= cols) {
+      for (let i = 0; i < linhas.length - 1; i++) out.push(...BOLD_ON, ...toBytes(linhas[i]), LF, ...BOLD_OFF)
+      const esp = ' '.repeat(Math.max(1, cols - ultima.length - preco.length))
+      out.push(...BOLD_ON, ...toBytes(ultima), ...BOLD_OFF, ...toBytes(esp + preco), LF)
+    } else {
+      for (const l of linhas) out.push(...BOLD_ON, ...toBytes(l), LF, ...BOLD_OFF)
+      const esp = ' '.repeat(Math.max(0, cols - preco.length))
+      out.push(...toBytes(esp + preco), LF)
+    }
+  } else {
+    for (const l of linhas) out.push(...BOLD_ON, ...toBytes(l), LF, ...BOLD_OFF)
+  }
+  return out
+}
+
 // Linha com label bold + valor normal na mesma linha: "Label: valor"
 function linhaLV(label, valor, cols) {
   const l = semAcento(label)
@@ -231,9 +275,9 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     // 1 sabor só E o nome do item já é o próprio sabor (delivery salva assim): mostra o sabor como título
     if (variacoes.length === 1 && !temGruposSabores && cleanV(variacoes[0].nome) === nomeProduto) nomeExibir = cleanV(variacoes[0].nome)
 
-    // Nome + preço na mesma linha (negrito)
+    // Nome + preço (negrito) — quebra o nome em linhas em vez de cortar
     const precoStr = !semPreco ? `R$${preco.toFixed(2)}` : ''
-    b.push(...BOLD_ON, ...duasColB(`${qtd}x ${nomeExibir}`, precoStr, COLS_N), ...BOLD_OFF)
+    b.push(...nomePreco(`${qtd}x ${nomeExibir}`, precoStr, COLS_N))
 
     // Tamanho do produto customizável (ex: "Serve 2 pessoas") — só quando tem tamanho ativo
     if (tamanhoNome) b.push(...linhaL(`  ${semAcento(tamanhoNome)}`, COLS_N))
