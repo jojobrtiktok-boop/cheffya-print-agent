@@ -204,8 +204,9 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(...BOLD_OFF_REAL)   // ESC E 0 — negrito off
   b.push(...SIZE_NORMAL)     // aplica o tamanho deste job (normal ou "letra maior")
   if (forte) {
-    b.push(...DOUBLE_STRIKE_ON)
-    b.push(...BOLD_ON)   // garante negrito desde o início
+    // Só negrito permanente. O double-strike (passada dupla) foi REMOVIDO porque em
+    // térmica 80mm o papel anda entre as passadas e BORRA o texto (vira mancha ilegível).
+    b.push(...BOLD_ON)
   }
 
   // ── Cabeçalho (SIZE_NORMAL + bold, centralizado pelo ESC — sem padding manual,
