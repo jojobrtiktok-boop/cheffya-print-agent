@@ -176,7 +176,10 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     cartaoDebito: 'Debito', cartao: 'Cartao', pixWhatsapp: 'PIX WPP',
   }
 
-  // Modo "forte": negrito permanente (BOLD_OFF vira no-op) + double-strike de reforço
+  // Modo "forte": negrito permanente (BOLD_OFF vira no-op) + double-strike de reforço.
+  // OBS: comandos de densidade/aquecimento (ESC 7 / DC2 #) foram REMOVIDOS porque, em
+  // papel 80mm (linha mais larga), faziam a impressora borrar tudo virando "código de
+  // barras". Negrito + double-strike escurecem com segurança em qualquer largura.
   BOLD_OFF = forte ? [] : BOLD_OFF_REAL
   // Init: reset, bold off, tamanho normal
   b.push(ESC, 0x40)
@@ -185,11 +188,6 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   if (forte) {
     b.push(...DOUBLE_STRIKE_ON)
     b.push(...BOLD_ON)   // garante negrito desde o início
-    // Densidade/aquecimento máximos — é o que realmente escurece em térmica.
-    // ESC 7 n1 n2 n3: max dots, heating time (alto=escuro), heating interval (baixo=escuro)
-    b.push(ESC, 0x37, 7, 0xC8, 2)
-    // GS ( L / densidade via DC2: reforço para printers que suportam DC2 # n
-    b.push(0x12, 0x23, 0x0F)
   }
 
   // ── Cabeçalho (SIZE_NORMAL + bold, centralizado pelo ESC — sem padding manual,
