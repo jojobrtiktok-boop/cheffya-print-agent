@@ -181,10 +181,19 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   // papel 80mm (linha mais larga), faziam a impressora borrar tudo virando "código de
   // barras". Negrito + double-strike escurecem com segurança em qualquer largura.
   BOLD_OFF = forte ? [] : BOLD_OFF_REAL
-  // Init: reset, bold off, tamanho normal
-  b.push(ESC, 0x40)
-  b.push(...BOLD_OFF_REAL)
-  b.push(...SIZE_NORMAL)
+  // ── Reset completo (recupera a impressora de qualquer modo travado) ──
+  // Alguns clones de impressora térmica não limpam tudo só com ESC @; mandar a
+  // sequência completa abaixo garante que cada impressão começa "limpa" e desfaz
+  // qualquer modo gráfico/codepage/tamanho que tenha ficado preso de uma vez anterior.
+  b.push(0x18)               // CAN — cancela dados/buffer de linha pendente
+  b.push(ESC, 0x40)          // ESC @ — inicializa
+  b.push(ESC, 0x74, 0x00)    // ESC t 0 — codepage padrão (PC437)
+  b.push(ESC, 0x21, 0x00)    // ESC ! 0 — limpa modo de impressão (Font A, sem ênfase/duplo)
+  b.push(GS, 0x21, 0x00)     // GS ! 0 — tamanho normal
+  b.push(ESC, 0x32)          // ESC 2 — espaçamento de linha padrão
+  b.push(ESC, 0x61, 0x00)    // ESC a 0 — alinhar à esquerda
+  b.push(...BOLD_OFF_REAL)   // ESC E 0 — negrito off
+  b.push(...SIZE_NORMAL)     // aplica o tamanho deste job (normal ou "letra maior")
   if (forte) {
     b.push(...DOUBLE_STRIKE_ON)
     b.push(...BOLD_ON)   // garante negrito desde o início
