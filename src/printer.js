@@ -192,6 +192,15 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(GS, 0x21, 0x00)     // GS ! 0 — tamanho normal
   b.push(ESC, 0x32)          // ESC 2 — espaçamento de linha padrão
   b.push(ESC, 0x61, 0x00)    // ESC a 0 — alinhar à esquerda
+  // Define explicitamente margem esquerda 0 e área de impressão conforme o papel.
+  // Algumas 80mm vêm de fábrica com área de 58mm e embolam ("código de barras") quando
+  // recebem linha mais larga — forçar a área correta resolve sem mexer no firmware.
+  b.push(GS, 0x4C, 0x00, 0x00)   // GS L 0 — margem esquerda = 0
+  if (larguraPapel === 80) {
+    b.push(GS, 0x57, 0x40, 0x02) // GS W 576 — área de impressão = 576 dots (80mm)
+  } else {
+    b.push(GS, 0x57, 0x80, 0x01) // GS W 384 — área de impressão = 384 dots (58mm)
+  }
   b.push(...BOLD_OFF_REAL)   // ESC E 0 — negrito off
   b.push(...SIZE_NORMAL)     // aplica o tamanho deste job (normal ou "letra maior")
   if (forte) {
