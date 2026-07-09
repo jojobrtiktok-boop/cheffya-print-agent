@@ -330,6 +330,7 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     // Grupos de sabores — label bold, cada variação em linha separada
     for (const grupo of gruposEscolhidos) {
       if (!grupo?.titulo) continue
+      if (grupo.naoImprimir) continue   // grupo marcado como "não imprimir no cupom"
       const vars = parseArr(grupo.variacoes)
       if (!vars.length) continue
       b.push(...linhaN(`  ${grupo.titulo}:`, COLS_N))
