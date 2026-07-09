@@ -159,7 +159,7 @@ function linhaLV(label, valor, cols) {
 }
 
 // modoVia: 'completo' (com preços) | 'cozinha' (sem preços, sem total)
-function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'completo', forte = false, fonteGrande = false) {
+function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'completo', forte = false, fonteGrande = false, cnpj = '') {
   const b = []
   const { N: COLS_N, H: COLS_H } = getCols(larguraPapel)
   const semPreco = modoVia === 'cozinha'
@@ -215,6 +215,12 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
   b.push(...SIZE_NORMAL)
   b.push(...BOLD_ON)
   if (nomeLoja) b.push(...toBytes(nomeLoja.toUpperCase().slice(0, COLS_N)), LF)
+  // CNPJ abaixo do nome da loja (configurado no painel — vazio = não imprime)
+  if (cnpj) {
+    b.push(...BOLD_OFF)
+    b.push(...toBytes(`CNPJ: ${String(cnpj)}`.slice(0, COLS_N)), LF)
+    b.push(...BOLD_ON)
+  }
 
   const canalLabel = {
     ifood: 'iFOOD', ifood2: 'iFOOD 2', '99food': '99FOOD',
@@ -585,9 +591,9 @@ catch { Write-Host "ERRO:$($_.Exception.Message)" }
 }
 
 // ── Imprimir pedido ───────────────────────────────────────────────────────────
-async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVia = 'completo', forte = false, fonteGrande = false) {
+async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVia = 'completo', forte = false, fonteGrande = false, cnpj = '') {
   if (!dispositivo) throw new Error('Nenhum dispositivo configurado. Configure em Alterar porta / impressora.')
-  const dados = montarEscPos(pedido, nomeLoja, larguraPapel, modoVia, forte, fonteGrande)
+  const dados = montarEscPos(pedido, nomeLoja, larguraPapel, modoVia, forte, fonteGrande, cnpj)
   log.info(`Imprimindo ${dados.length} bytes em "${dispositivo}" (papel ${larguraPapel}mm, via=${modoVia})`)
   if (ehPortaCOM(dispositivo)) {
     await escrevePortaCOM(dispositivo, dados)
@@ -598,7 +604,7 @@ async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVi
 }
 
 // ── Testar impressora ─────────────────────────────────────────────────────────
-async function testar(dispositivo, larguraPapel = 58, forte = false, fonteGrande = false) {
+async function testar(dispositivo, larguraPapel = 58, forte = false, fonteGrande = false, cnpj = '') {
   let versao = '?'
   try { versao = require('../package.json').version } catch {}
   const pedidoTeste = {
@@ -613,7 +619,7 @@ async function testar(dispositivo, larguraPapel = 58, forte = false, fonteGrande
     forma_pagamento: 'pix',
     obs: `Agente v${versao} | ${larguraPapel}mm | ${forte ? 'FORTE: SIM' : 'forte: nao'}`,
   }
-  await imprimir(pedidoTeste, 'CHEFFYA', dispositivo, larguraPapel, 'completo', forte, fonteGrande)
+  await imprimir(pedidoTeste, 'CHEFFYA', dispositivo, larguraPapel, 'completo', forte, fonteGrande, cnpj)
 }
 
 module.exports = { imprimir, testar, listarPortas, verificarPorta, montarEscPos }
