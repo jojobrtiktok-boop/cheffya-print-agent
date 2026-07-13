@@ -316,7 +316,8 @@ function montarEscPos(pedido, nomeLoja = '', larguraPapel = 58, modoVia = 'compl
     b.push(...nomePreco(`${qtd}x ${nomeExibir}`, precoStr, COLS_N))
 
     // Tamanho do produto customizável (ex: "Serve 2 pessoas") — só quando tem tamanho ativo
-    if (tamanhoNome) b.push(...linhaL(`  ${semAcento(tamanhoNome)}`, COLS_N))
+    // e o produto NÃO estiver marcado como "não imprimir o nome do tamanho".
+    if (tamanhoNome && !item.tamanho?.naoImprimir) b.push(...linhaL(`  ${semAcento(tamanhoNome)}`, COLS_N))
 
     // Sabores simples
     if (!temGruposSabores && variacoes.length === 1 && cleanV(variacoes[0].nome) !== nomeProduto) {
