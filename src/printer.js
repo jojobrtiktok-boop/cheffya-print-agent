@@ -450,6 +450,19 @@ function ehPortaCOM(dispositivo) {
   return /^COM\d+$/i.test(dispositivo)
 }
 
+// ── Fila de acesso ao dispositivo ────────────────────────────────────────────
+// A porta COM só aceita UM acesso por vez. Sem fila, o /status (que abre a
+// porta pra verificar) pode colidir com uma impressão em andamento — e a
+// impressão falha com "porta em uso" de forma intermitente. Tudo que abre o
+// dispositivo passa por aqui, um de cada vez.
+let _filaDispositivo = Promise.resolve()
+function naFila(fn) {
+  const proximo = _filaDispositivo.then(fn, fn)
+  // a fila nunca rejeita (o erro é propagado só pra quem chamou)
+  _filaDispositivo = proximo.then(() => {}, () => {})
+  return proximo
+}
+
 // ── Enviar buffer via porta COM (serial/USB-serial/Bluetooth) ─────────────────
 async function escrevePortaCOM(portaCOM, buffer) {
   const tempFile = path.join(os.tmpdir(), `cheffya-print-${Date.now()}.bin`)
@@ -458,10 +471,15 @@ async function escrevePortaCOM(portaCOM, buffer) {
   const portaPS = portaCOM.replace(/'/g, "''")
   const filePS  = tempFile.replace(/\\/g, '\\\\').replace(/'/g, "''")
 
+  // A 9600 baud a porta envia ~960 bytes/s. Um cupom grande (80mm, muitos
+  // itens) passa de 5000 bytes e estourava o WriteTimeout fixo de 5s no MEIO
+  // da escrita — impressão parava pela metade. Timeout proporcional ao tamanho.
+  const msEscrita = Math.max(8000, Math.ceil(buffer.length / 960 * 1000) + 5000)
+
   const script = `
 $bytes = [System.IO.File]::ReadAllBytes('${filePS}')
 $port  = New-Object System.IO.Ports.SerialPort('${portaPS}', 9600, 'None', 8, 'One')
-$port.WriteTimeout = 5000
+$port.WriteTimeout = ${msEscrita}
 try {
   $port.Open()
   $port.Write($bytes, 0, $bytes.Length)
@@ -472,9 +490,23 @@ try {
 Remove-Item -Path '${filePS}' -ErrorAction SilentlyContinue
 `
   try {
-    await runPS(script)
+    // timeout do processo = tempo de escrita + folga pra abrir a porta
+    await runPS(script, msEscrita + 10000)
   } catch (e) {
     try { fs.unlinkSync(tempFile) } catch {}
+    // Porta momentaneamente ocupada (colisão com outro acesso): 1 retry após 1,5s
+    if (/acesso|access|denied|em uso|in use|ocupad/i.test(e.message || '')) {
+      log.warn(`Porta ${portaCOM} ocupada — tentando novamente em 1,5s`)
+      await new Promise(r => setTimeout(r, 1500))
+      fs.writeFileSync(tempFile, buffer)
+      try {
+        await runPS(script, msEscrita + 10000)
+        return
+      } catch (e2) {
+        try { fs.unlinkSync(tempFile) } catch {}
+        throw e2
+      }
+    }
     throw e
   }
 }
@@ -573,14 +605,16 @@ async function listarPortas() {
 }
 
 // ── Verificar se dispositivo está acessível ───────────────────────────────────
+// Entra na MESMA fila da impressão: a verificação abre a porta COM, e sem a
+// fila ela roubava a porta bem na hora de um pedido imprimir.
 async function verificarPorta(dispositivo) {
   if (ehPortaCOM(dispositivo)) {
     const portaPS = dispositivo.replace(/'/g, "''")
     try {
-      const out = await runPS(`
+      const out = await naFila(() => runPS(`
 try { $p = New-Object System.IO.Ports.SerialPort('${portaPS}',9600); $p.Open(); $p.Close(); Write-Host 'OK' }
 catch { Write-Host "ERRO:$($_.Exception.Message)" }
-`, 5000)
+`, 5000))
       return out.startsWith('OK')
     } catch { return false }
   } else {
@@ -598,11 +632,9 @@ async function imprimir(pedido, nomeLoja, dispositivo, larguraPapel = 58, modoVi
   if (!dispositivo) throw new Error('Nenhum dispositivo configurado. Configure em Alterar porta / impressora.')
   const dados = montarEscPos(pedido, nomeLoja, larguraPapel, modoVia, forte, fonteGrande, cnpj)
   log.info(`Imprimindo ${dados.length} bytes em "${dispositivo}" (papel ${larguraPapel}mm, via=${modoVia})`)
-  if (ehPortaCOM(dispositivo)) {
-    await escrevePortaCOM(dispositivo, dados)
-  } else {
-    await escreveImpressoraWindows(dispositivo, dados)
-  }
+  await naFila(() => ehPortaCOM(dispositivo)
+    ? escrevePortaCOM(dispositivo, dados)
+    : escreveImpressoraWindows(dispositivo, dados))
   log.info(`Impressão concluída`)
 }
 
