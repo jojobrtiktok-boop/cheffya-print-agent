@@ -588,18 +588,28 @@ async function listarPortas() {
   } catch {}
 
   // 2. Impressoras Windows instaladas (USB direto, rede, etc.) — exclui PDF/Fax/XPS
+  let nomes = []
   try {
     const out = await runPS(
       `Get-Printer | Where-Object { $_.Name -notmatch 'PDF|XPS|Fax|OneNote|Microsoft' } | Select-Object -ExpandProperty Name`,
       5000
     )
-    if (out) {
-      out.split(/\r?\n/)
-        .map(s => s.trim())
-        .filter(Boolean)
-        .forEach(nome => resultados.push({ path: nome, descricao: 'Impressora USB / Rede (Windows)' }))
-    }
+    if (out) nomes = out.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
   } catch {}
+
+  // Fallback via WMI: em algumas máquinas o Get-Printer falha/vem vazio (ex: Epson TM-T20X)
+  // mesmo com a impressora instalada. O Win32_Printer é mais compatível.
+  if (nomes.length === 0) {
+    try {
+      const out = await runPS(
+        `Get-CimInstance -ClassName Win32_Printer | Where-Object { $_.Name -notmatch 'PDF|XPS|Fax|OneNote|Microsoft' } | Select-Object -ExpandProperty Name`,
+        6000
+      )
+      if (out) nomes = out.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+    } catch {}
+  }
+
+  nomes.forEach(nome => resultados.push({ path: nome, descricao: 'Impressora USB / Rede (Windows)' }))
 
   return resultados
 }
@@ -618,9 +628,31 @@ catch { Write-Host "ERRO:$($_.Exception.Message)" }
       return out.startsWith('OK')
     } catch { return false }
   } else {
-    // Impressora Windows: verifica se está na lista
+    // Impressora Windows: verifica abrindo via winspool (MESMA API que a impressão usa).
+    // Em algumas máquinas (ex: Epson TM-T20X) o Get-Printer vem vazio/falha mesmo com a
+    // impressora funcionando — o que deixava o automático "verificando" pra sempre. Aqui,
+    // se dá pra ABRIR a impressora (igual na hora de imprimir), consideramos conectada.
+    const nomePS = dispositivo.replace(/'/g, "''")
+    const script = `
+$ErrorActionPreference='SilentlyContinue'
+if (-not ([System.Management.Automation.PSTypeName]'PChk').Type) {
+  Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices;
+public class PChk {
+  [DllImport("winspool.Drv", EntryPoint="OpenPrinterA")] public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+  [DllImport("winspool.Drv", EntryPoint="ClosePrinter")] public static extern bool ClosePrinter(IntPtr h);
+}
+"@
+}
+$h=[IntPtr]::Zero
+if ([PChk]::OpenPrinter('${nomePS}', [ref]$h, [IntPtr]::Zero)) { [PChk]::ClosePrinter($h) | Out-Null; Write-Host 'OK' } else { Write-Host 'ERRO' }
+`
     try {
-      const nomePS = dispositivo.replace(/'/g, "''")
+      const out = await naFila(() => runPS(script, 6000))
+      if (out.trim().endsWith('OK')) return true
+    } catch {}
+    // Fallback: Get-Printer (caso o OpenPrinter não resolva)
+    try {
       const out = await runPS(`(Get-Printer -Name '${nomePS}' -ErrorAction SilentlyContinue) -ne $null`, 3000)
       return out.trim() === 'True'
     } catch { return false }
