@@ -628,30 +628,16 @@ catch { Write-Host "ERRO:$($_.Exception.Message)" }
       return out.startsWith('OK')
     } catch { return false }
   } else {
-    // Impressora Windows: verifica abrindo via winspool (MESMA API que a impressão usa).
-    // Em algumas máquinas (ex: Epson TM-T20X) o Get-Printer vem vazio/falha mesmo com a
-    // impressora funcionando — o que deixava o automático "verificando" pra sempre. Aqui,
-    // se dá pra ABRIR a impressora (igual na hora de imprimir), consideramos conectada.
+    // Impressora Windows: confere se ela EXISTE — SEM abrir o dispositivo (pra não
+    // interferir na impressão) e FORA da fila (senão as checagens frequentes entopem
+    // a fila e os pedidos nunca imprimem). Win32_Printer (WMI) é mais compatível que
+    // Get-Printer, que falha em algumas máquinas (ex: Epson TM-T20X).
     const nomePS = dispositivo.replace(/'/g, "''")
-    const script = `
-$ErrorActionPreference='SilentlyContinue'
-if (-not ([System.Management.Automation.PSTypeName]'PChk').Type) {
-  Add-Type -TypeDefinition @"
-using System; using System.Runtime.InteropServices;
-public class PChk {
-  [DllImport("winspool.Drv", EntryPoint="OpenPrinterA")] public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
-  [DllImport("winspool.Drv", EntryPoint="ClosePrinter")] public static extern bool ClosePrinter(IntPtr h);
-}
-"@
-}
-$h=[IntPtr]::Zero
-if ([PChk]::OpenPrinter('${nomePS}', [ref]$h, [IntPtr]::Zero)) { [PChk]::ClosePrinter($h) | Out-Null; Write-Host 'OK' } else { Write-Host 'ERRO' }
-`
     try {
-      const out = await naFila(() => runPS(script, 6000))
-      if (out.trim().endsWith('OK')) return true
+      const out = await runPS(`(Get-CimInstance -ClassName Win32_Printer -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '${nomePS}' } | Measure-Object).Count`, 5000)
+      if (parseInt(out.trim(), 10) > 0) return true
     } catch {}
-    // Fallback: Get-Printer (caso o OpenPrinter não resolva)
+    // Fallback: Get-Printer
     try {
       const out = await runPS(`(Get-Printer -Name '${nomePS}' -ErrorAction SilentlyContinue) -ne $null`, 3000)
       return out.trim() === 'True'
